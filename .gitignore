@@ -1,0 +1,10 @@
+# JetBrains
+.ideas/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Directories
+data/
+results/
+burningbus/
