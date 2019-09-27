@@ -72,6 +72,9 @@ def clean_student_table(course_name, course_id, student_table, col_dict):
     cleaned_student_table: Pandas Dataframe
     """
 
+    # TODO: Better organize this temporary filter
+    if course_name == '16Fa CHEM 1P':
+        student_table = student_table[student_table['coursecode'].astype(int) == 40130]
     course_info_cols = parse_course_name(course_name)
     cleaned_student_table = pd.DataFrame([], index=range(student_table.shape[0]))
 
@@ -86,15 +89,41 @@ def clean_student_table(course_name, course_id, student_table, col_dict):
         elif col in student_table.columns:
             cleaned_student_table[col] = student_table[col]
 
+    # Encode survey responses where necessary
+    is_svy_col = cleaned_student_table.columns.str.contains('pre')
+    if is_svy_col.sum() > 0:
+        svy_cols = cleaned_student_table.columns[is_svy_col]
+        for col in svy_cols:
+            if cleaned_student_table[col].dtype == 'O':
+                cleaned_student_table[col] = cleaned_student_table[col].str.lower()
+                cleaned_student_table[col].replace(to_replace={'not at all true of me': 1,
+                                                    'very untrue of me': 1,
+                                                    'somewhat untrue of me': 2,
+                                                    'neutral': 3,
+                                                    'very true of me': 5,
+                                                    'strongly disagree': 1,
+                                                    'strongly agree': 5}, inplace=True)
+                if 'neutral' in cleaned_student_table[col].tolist():
+                    cleaned_student_table[col].replace('somewhat true of me', 4, inplace=True)
+                else:
+                    cleaned_student_table[col].replace('somewhat true of me', 3, inplace=True)
+            cleaned_student_table[col] = cleaned_student_table[col].astype(float)
+
+    # Set 'coursecode' to string
     if 'coursecode' in cleaned_student_table.columns:
         course_codes = cleaned_student_table['coursecode']
         course_code = course_codes[course_codes.first_valid_index()]
-        cleaned_student_table['coursecode'] = course_codes.fillna(course_code).astype(
-            int).astype(str)
+        cleaned_student_table['coursecode'] = str(int(course_code))
 
-    # TODO: Better organize this temporary filter
-    if course_name == '16Fa CHEM 1P':
-        cleaned_student_table = cleaned_student_table[cleaned_student_table['coursecode'] == '40130']
+    # Calculate letter grades where missing and order
+    if 'grade' in cleaned_student_table.columns:
+        if 'course_total' in cleaned_student_table.columns:
+            grade_to_fill = (cleaned_student_table['course_total'].notnull()) & (cleaned_student_table['grade'].isnull())
+            cleaned_student_table['grade'] = np.where(grade_to_fill, cleaned_student_table['course_total'].apply(
+                convert_score_to_letter), cleaned_student_table['grade'])
+        cleaned_student_table['grade'].astype('category').cat.set_categories(['F', 'D-', 'D', 'D+', 'C-', 'C', 'C+',
+                                                                              'B-', 'B', 'B+', 'A-', 'A', 'A+'],
+                                                                             ordered=True, inplace=True)
 
     return cleaned_student_table
 
