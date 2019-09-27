@@ -135,7 +135,7 @@ def get_acad_year(year, term):
     Returns
     -------
     acadyear : str
-        Academic year in the form of 20XX-XY (Y=X+1)
+        Academic year in the form of 20XX-YY (YY=XX+1)
     """
     if term == 'Fall':
         acadyear = str(year) + '-' + str(year+1)[-2:]
@@ -150,7 +150,7 @@ def get_year(acadyear, term):
     Parameters
     ----------
     acadyear : str
-        Academic year in the form of 20XX-XY (Y=X+1)
+        Academic year in the form of 20XX-YY (YY=XX+1)
     term : str
         Academic term name in capitalized, full format, e.g., 'Winter'
     
@@ -165,63 +165,80 @@ def get_year(acadyear, term):
         year = int(acadyear[:4]) + 1
     return acadyear
 
-def get_cat_from_url(url):
+def get_cat_from_url(url, cat_dict=None):
     """
-    Get the category of a URL as specified in the middle of the URL
-    Ex.
-    1. https://canvas.eee.uci.edu/courses/2230/files/742190/download -> 'files'
-    2. https://canvas.eee.uci.edu/courses/2230/ -> 'homepage'
+    Get the category of a URL.
+    If cat_dict is None, return the raw category as specified in the middle of the URL
+        Ex.
+        1. https://canvas.eee.uci.edu/courses/2230/files/742190/download -> 'files'
+        2. https://canvas.eee.uci.edu/courses/2230/ -> 'homepage'
+    If cat_dict is given, map the raw category to the user-specified category in cat_dict
+        Ex. 'files' -> 'content'
 
     Parameters
     ----------
     url : str
 
+    cat_dict: dict
+        Mapping of user-specified categories to raw categories
+        Ex. {'portal': ['homepage', 'front_page']}
+
     Returns
     -------
     cat : str
     """
-    if len(url.split('/')) < 6:
-        return 'homepage'
+    str_match = re.findall(r'(?<=courses/)\d+/\w+', url)
+    if len(str_match)==0:
+        cat = 'homepage'
     else:
-        return url.split('/')[5]
+        cat = re.sub(r'\d+/', '', str_match[0])
+    if cat_dict is not None:
+        cat = 'misc'
+        for k in cat_dict:
+            if cat in cat_dict[k]:
+                cat = k
+                break
+    return cat
 
-# def generate_quarters(course_students):
-#     """
-#     Determines the long term quarters
-#
-#     Returns
-#     -------
-#     course_students_new: dict
-#         keys are courses, values are ids associated with each course including ones with a or b appended to the end
-#     """
-#     students = dict()
-#     course_students_new = dict()
-#     for course in course_students:
-#         ids = []
-#         year = course[:2]
-#         quarter = course[2:4]
-#         if quarter == "Fa":
-#             following = [str(int(year)+1) + "Winter", str(int(year)+1) + "Spring", str(int(year)+1) + "Fall"]
-#         elif quarter == "Wi":
-#             following = [year + "Spring", year + "Fall", str(int(year)+1)+ "Winter"]
-#         elif quarter == "Sp":
-#             following = [year + "Fall", str(int(year)+1) + "Winter", str(int(year)+1) + "Spring"]
-#         else:
-#             following = [year + "Fall", str(int(year)+1) + "Winter", str(int(year)+1) + "Spring"]
-#
-#         for s in course_students[course]:
-#             if str(s) not in students:
-#                 students[str(s)] = following
-#                 ids.append(str(s))
-#             elif str(s) + "a" not in students:
-#                 students[str(s) + "a"] = following
-#                 ids.append(str(s) + "a")
-#             else:
-#                 students[str(s) + "b"] = following
-#                 ids.append(str(s) + "b")
-#         course_students_new[course] = ids
-#
-#     with open('./student_data.pickle', 'wb') as handle:
-#         pickle.dump(students, handle, protocol=pickle.HIGHEST_PROTOCOL)
-#
-#     return course_students_new
+def get_next_terms(acadyear_start, acadterm_start, N_TERMS=4):
+    """
+    Given one academic term (quarter), return N_TERMS consecutive terms that follow.
+        Ex. 2016-17 Spring -> 2016-17 Summer, 2017-18 Fall, 2017-18 Winter, 2017-18 Spring, ...
+
+    Parameters
+    ----------
+    acadyear_start : str
+        Academic year to start with in the form of 20XX-YY (YY=XX+1)
+
+    acadterm_start : str
+        Academic term name to start with in capitalized, full format, e.g., 'Winter', 'Summer 1'
+
+    N_TERMS : int
+        Number of following terms to return
+
+    Returns
+    -------
+    next_terms : DataFrame
+        Each row is a term, e.g.,
+            acadyr  | acadterm
+            ++++++++++++++++++
+            2016-17 | Winter
+            2016-17 | Spring
+    """
+    next_acadyrs = []
+    next_acadterms = []
+    terms = ['Fall', 'Winter', 'Spring', 'Summer']
+    if 'Summer' in acadterm_start:
+        acadterm_start = 'Summer'
+    term_start_index = terms.index(acadterm_start)
+
+    for i in range(4):
+        acadterm_offset = (term_start_index + i + 1) % len(terms)
+        next_acadterm = terms[acadterm_offset]
+        acadyear_offset = int((term_start_index + i + 1) / len(terms))
+        next_acadyr = str(int(acadyear_start[:4])+acadyear_offset) + '-' + str(int(acadyear_start[-2:])+acadyear_offset)
+        next_acadterms.append(next_acadterm)
+        next_acadyrs.append(next_acadyr)
+
+    next_terms = pd.DataFrame({'acadyr': next_acadyrs, 'acadterm': next_acadterms})
+    return next_terms
