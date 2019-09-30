@@ -228,7 +228,13 @@ def load_clickstream(course_dir_list, out_dir, hdf, to_csv=True):
 
     out_dir : str
         Directory to save the cleaned, merged table
-    
+
+    hdf : HDFStore object
+        Where the resulting table is stored (comparable to a schema in databases)
+
+    to_csv : boolean
+        Whether to store the table in a .csv file (in addition to hdf) for easier examnination
+
     Returns
     -------
     None
