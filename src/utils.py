@@ -200,17 +200,17 @@ def get_cat_from_url(url, cat_dict=None):
                 break
     return cat
 
-def get_next_terms(acadyear_start, acadterm_start, N_TERMS=4):
+def get_next_terms(acadyr, acadterm, N_TERMS=4):
     """
-    Given one academic term (quarter), return N_TERMS consecutive terms that follow.
+    Given one academic term (quarter), find N_TERMS consecutive terms that follow.
         Ex. 2016-17 Spring -> 2016-17 Summer, 2017-18 Fall, 2017-18 Winter, 2017-18 Spring, ...
 
     Parameters
     ----------
-    acadyear_start : str
+    acadyr : str
         Academic year to start with in the form of 20XX-YY (YY=XX+1)
 
-    acadterm_start : str
+    acadterm : str
         Academic term name to start with in capitalized, full format, e.g., 'Winter', 'Summer 1'
 
     N_TERMS : int
@@ -220,25 +220,44 @@ def get_next_terms(acadyear_start, acadterm_start, N_TERMS=4):
     -------
     next_terms : DataFrame
         Each row is a term, e.g.,
-            acadyr  | acadterm
-            ++++++++++++++++++
-            2016-17 | Winter
-            2016-17 | Spring
+            acadyr  | acadterm | next_acadyr  | next_acadterm
+            +++++++++++++++++++++++++++++++++++++++++++++++++
+            2016-17 | Fall     | 2016-17      | Winter
+            2016-17 | Fall     | 2016-17      | Spring
     """
     next_acadyrs = []
     next_acadterms = []
     terms = ['Fall', 'Winter', 'Spring', 'Summer']
-    if 'Summer' in acadterm_start:
-        acadterm_start = 'Summer'
-    term_start_index = terms.index(acadterm_start)
+    for i, term in enumerate(terms):
+        if term in acadterm:
+            term_start_index = i
+            break
 
-    for i in range(4):
-        acadterm_offset = (term_start_index + i + 1) % len(terms)
+    for j in range(4):
+        acadterm_offset = (term_start_index + j + 1) % len(terms)
         next_acadterm = terms[acadterm_offset]
-        acadyear_offset = int((term_start_index + i + 1) / len(terms))
-        next_acadyr = str(int(acadyear_start[:4])+acadyear_offset) + '-' + str(int(acadyear_start[-2:])+acadyear_offset)
+        acadyear_offset = int((term_start_index + j + 1) / len(terms))
+        next_acadyr = str(int(acadyr[:4]) + acadyear_offset) + '-' + str(int(acadyr[-2:]) + acadyear_offset)
         next_acadterms.append(next_acadterm)
         next_acadyrs.append(next_acadyr)
 
-    next_terms = pd.DataFrame({'acadyr': next_acadyrs, 'acadterm': next_acadterms})
+    next_terms = pd.DataFrame({'acadyr': [acadyr] * N_TERMS,
+                               'acadterm': [acadterm] * N_TERMS,
+                               'next_acadyr': next_acadyrs,
+                               'next_acadterm': next_acadterms})
     return next_terms
+
+def get_bool_cols(df):
+    """
+    Find all the boolean columns in a Pandas DataFrame
+
+    Parameters
+    ----------
+    df : Pandas DataFrame
+
+    Returns
+    -------
+    bool_cols : list
+    """
+    bool_cols = [col for col in df.columns if np.isin(df[col].dropna().unique(), [0, 1]).all()]
+    return bool_cols
