@@ -169,8 +169,10 @@ def load_student_info(course_dir_list, out_dir, col_dict, hdf, to_csv=True):
         merged_student_info = merged_student_info.append(course_student_table)
         print('Cleaned data appended')
 
-    merged_student_info['roster_randomid'] = merged_student_info['roster_randomid'].astype('Int64').astype(str)
-    merged_student_info.reset_index(inplace=True, drop=True)
+    if 'roster_randomid' in merged_student_info.columns:
+        merged_student_info = merged_student_info[merged_student_info['roster_randomid'].notnull()]
+        merged_student_info['roster_randomid'] = merged_student_info['roster_randomid'].astype('Int64').astype(str)
+        merged_student_info.reset_index(inplace=True, drop=True)
 
     hdf.put('student', merged_student_info)
     print('Merged student info table saved to HDFStore')
@@ -295,11 +297,15 @@ def load_enrollment(enrollment_file, out_dir, hdf, to_csv=True):
 
     print('Cleaning enrollment data')
     enrollment.columns = enrollment.columns.str.lower()
-    enrollment['roster_randomid'] = enrollment['roster_randomid'].astype('Int64').astype(str)
-    enrollment['coursecode'] = enrollment['coursecode'].astype(str)
+
+    if 'roster_randomid' in enrollment.columns:
+        enrollment = enrollment[enrollment['roster_randomid'].notnull()]
+        enrollment['roster_randomid'] = enrollment['roster_randomid'].astype('Int64').astype(str)
+    if 'coursecode' in enrollment.columns:
+        enrollment['coursecode'] = enrollment['coursecode'].astype(str)
     for int_col in ['acadtermcode', 'ordtermincsmr', 'ordtermexcsmr']:
-        enrollment[int_col] = enrollment[int_col].astype(int)
-    # enrollment['year'] = enrollment.apply(lambda x: get_year(x['acadyr'], x['acadterm']), axis=1)
+        if int_col in enrollment.columns:
+            enrollment[int_col] = enrollment[int_col].astype(int)
     enrollment.reset_index(inplace=True, drop=True)
     print('Cleaning finished')
 
