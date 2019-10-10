@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from src.utils import *
@@ -115,15 +116,14 @@ def clean_student_table(course_name, course_id, student_table, col_dict):
         course_code = course_codes[course_codes.first_valid_index()]
         cleaned_student_table['coursecode'] = str(int(course_code))
 
-    # Calculate letter grades where missing and order
-    if 'grade' in cleaned_student_table.columns:
+    # Calculate letter grades where missing and order these letter grades
+    if 'grade' in col_dict:
+        if 'grade' not in cleaned_student_table.columns:
+            cleaned_student_table['grade'] = np.nan
         if 'course_total' in cleaned_student_table.columns:
             grade_to_fill = (cleaned_student_table['course_total'].notnull()) & (cleaned_student_table['grade'].isnull())
             cleaned_student_table['grade'] = np.where(grade_to_fill, cleaned_student_table['course_total'].apply(
                 convert_score_to_letter), cleaned_student_table['grade'])
-        cleaned_student_table['grade'].astype('category').cat.set_categories(['F', 'D-', 'D', 'D+', 'C-', 'C', 'C+',
-                                                                              'B-', 'B', 'B+', 'A-', 'A', 'A+'],
-                                                                             ordered=True, inplace=True)
 
     return cleaned_student_table
 
@@ -173,6 +173,11 @@ def load_student_info(course_dir_list, out_dir, col_dict, hdf, to_csv=True):
         merged_student_info = merged_student_info[merged_student_info['roster_randomid'].notnull()]
         merged_student_info['roster_randomid'] = merged_student_info['roster_randomid'].astype('Int64').astype(str)
         merged_student_info.reset_index(inplace=True, drop=True)
+
+    if 'grade' in merged_student_info.columns:
+        merged_student_info['grade'].astype('category').cat.set_categories(['F', 'D-', 'D', 'D+', 'C-', 'C', 'C+',
+                                                                              'B-', 'B', 'B+', 'A-', 'A', 'A+'],
+                                                                             ordered=True, inplace=True)
 
     hdf.put('student', merged_student_info)
     print('Merged student info table saved to HDFStore')
