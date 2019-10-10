@@ -1,11 +1,11 @@
 ###########################
 # Commonly used functions #
 ###########################
-
-import os
 import yaml
+import numpy as np
 import pandas as pd
 import re
+from itertools import product
 
 def load_yaml(filename):
     """
@@ -247,9 +247,10 @@ def get_next_terms(acadyr, acadterm, N_TERMS=4):
                                'next_acadterm': next_acadterms})
     return next_terms
 
-def get_bool_cols(df):
+def split_bool_cols(df):
     """
-    Find all the boolean columns in a Pandas DataFrame
+    Separate boolean and non-boolean numeric columns in a Pandas DataFrame
+    Useful when all numeric columns are of "float" data type and it is not feasible to separate the columns by data type
 
     Parameters
     ----------
@@ -258,6 +259,9 @@ def get_bool_cols(df):
     Returns
     -------
     bool_cols : list
+    non_bool_cols : list
     """
-    bool_cols = [col for col in df.columns if np.isin(df[col].dropna().unique(), [0, 1]).all()]
-    return bool_cols
+    df_num = df.select_dtypes('number')
+    bool_cols = [col for col in df_num.columns if np.isin(df_num[col].dropna().unique(), [0, 1]).all()]
+    non_bool_cols = df_num.columns.drop(bool_cols).tolist()
+    return bool_cols, non_bool_cols
