@@ -4,6 +4,9 @@
 # Jupyter Notebook
 .ipynb_checkpoints/
 
+# Config files
+config/
+
 # Directories
 data/
 results/
