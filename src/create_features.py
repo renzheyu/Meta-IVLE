@@ -58,7 +58,7 @@ def create_demographic_features(student_info, feature_list, id_cols, out_dir, hd
     print('Demographic features saved to HDFStore')
     if to_csv:
         csv_path = os.path.join(out_dir, 'demographic_features.csv')
-        feat_dem.to_csv(csv_path, index=False)
+        feat_dem.to_csv(csv_path)
         print(f'Demographic features saved to {csv_path}')
 
 
@@ -114,7 +114,6 @@ def create_click_features(clickstream, course, feature_list, id_cols, out_dir, h
     is_last_action = (clicks_srt['roster_randomid'] != clicks_srt.shift(-1)['roster_randomid'])
     is_too_long = (clicks_srt['interaction_seconds'] > MAX_SECONDS)
     clicks_srt['interaction_seconds'] = np.where((is_last_action | is_too_long), MAX_SECONDS, clicks_srt['interaction_seconds'])
-    clicks_srt['interaction_seconds'].fillna(0, inplace=True)
     clicks_srt = clicks_srt[clicks_srt['week'].notnull()] # Remove clicks outside of the course period
 
     # Get the category of each click
@@ -172,14 +171,13 @@ def create_click_features(clickstream, course, feature_list, id_cols, out_dir, h
             ttc.columns = [col[0] + str(col[1]) for col in ttc.columns.values]
             feat_click = feat_click.merge(ttc, how='left')
 
-    feat_click.fillna(0, inplace=True)
     feat_click.set_index(id_cols, inplace=True)
 
     hdf.put('click_features', feat_click)
     print('Click features saved to HDFStore')
     if to_csv:
         csv_path = os.path.join(out_dir, 'click_features.csv')
-        feat_click.to_csv(csv_path, index=False)
+        feat_click.to_csv(csv_path)
         print(f'Click features saved to {csv_path}')
 
 
@@ -216,22 +214,22 @@ def create_survey_features(student_info, feature_list, id_cols, out_dir, hdf, to
 
     for feat in feature_list:
         if feat == 'effort_regulation':
-            feat_svy['effort_regulation'] = student_info[['pre_er1', 'pre_er2', 'pre_er3', 'pre_er4']].sum(axis=1)
+            feat_svy['effort_regulation'] = student_info[['pre_er1', 'pre_er2', 'pre_er3', 'pre_er4']].sum(axis=1,
+                                                                                                           min_count=1)
         if feat == 'time_management':
-            feat_svy['time_management'] = student_info[['pre_orsh4', 'pre_orsh5']].sum(axis=1)
+            feat_svy['time_management'] = student_info[['pre_orsh4', 'pre_orsh5']].sum(axis=1, min_count=1)
         if feat == 'self_efficacy':
-            feat_svy['self_efficacy'] = student_info[['pre_se1', 'pre_se2', 'pre_se3']].sum(axis=1)
+            feat_svy['self_efficacy'] = student_info[['pre_se1', 'pre_se2', 'pre_se3']].sum(axis=1, min_count=1)
         if 'environment_management' in feature_list:
-            feat_svy['environment_management'] = student_info[['pre_orsh1', 'pre_orsh2']].sum(axis=1)
+            feat_svy['environment_management'] = student_info[['pre_orsh1', 'pre_orsh2']].sum(axis=1, min_count=1)
 
-    feat_svy.fillna(0, inplace=True)
     feat_svy.set_index(id_cols, inplace=True)
 
     hdf.put('survey_features', feat_svy)
     print('Survey features saved to HDFStore')
     if to_csv:
         csv_path = os.path.join(out_dir, 'survey_features.csv')
-        feat_svy.to_csv(csv_path, index=False)
+        feat_svy.to_csv(csv_path)
         print(f'Survey features saved to {csv_path}')
 
 
@@ -315,7 +313,7 @@ def create_labels(student_info, enrollment, label_dict, id_cols, out_dir, hdf, t
     print('Labels saved to HDFStore')
     if to_csv:
         csv_path = os.path.join(out_dir, 'labels.csv')
-        labels.to_csv(csv_path, index=False)
+        labels.to_csv(csv_path)
         print(f'Labels saved to {csv_path}')
 
 
