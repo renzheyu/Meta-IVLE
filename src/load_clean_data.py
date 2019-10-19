@@ -110,6 +110,9 @@ def clean_student_table(course_name, course_id, student_table, col_dict):
                     cleaned_student_table[col].replace('somewhat true of me', 3, inplace=True)
             cleaned_student_table[col] = cleaned_student_table[col].astype(float)
 
+    if 'roster_randomid' in cleaned_student_table.columns:
+        cleaned_student_table.drop_duplicates('roster_randomid', inplace=True)
+
     # Set 'coursecode' to string
     if 'coursecode' in cleaned_student_table.columns:
         course_codes = cleaned_student_table['coursecode']

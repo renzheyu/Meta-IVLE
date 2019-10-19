@@ -3,9 +3,9 @@ import numpy as np
 import pandas as pd
 from src.utils import *
 
-def create_demographic_features(student_info, feature_list, id_cols, out_dir, hdf, to_csv=True):
+def create_institutional_features(student_info, feature_list, id_cols, out_dir, hdf, to_csv=True):
     """
-    Extract demographic features for each student in each class from the cleaned student table and save to disk
+    Extract institutional features for each student in each class from the cleaned student table and save to disk
 
     Parameters
     ----------
@@ -32,7 +32,7 @@ def create_demographic_features(student_info, feature_list, id_cols, out_dir, hd
     None
     """
     feat_dem = student_info[id_cols]
-    print('Creating demographic features')
+    print('Creating institutional features')
 
     for feat in feature_list:
         if feat in ['age', 'sattotalscore', 'hsgpa', 'gpacumulative']:
@@ -54,12 +54,12 @@ def create_demographic_features(student_info, feature_list, id_cols, out_dir, hd
                                                                            'International student': 0})
     feat_dem.set_index(id_cols, inplace=True)
 
-    hdf.put('demographic_features', feat_dem)
-    print('Demographic features saved to HDFStore')
+    hdf.put('institutional_features', feat_dem)
+    print('institutional features saved to HDFStore')
     if to_csv:
-        csv_path = os.path.join(out_dir, 'demographic_features.csv')
+        csv_path = os.path.join(out_dir, 'institutional_features.csv')
         feat_dem.to_csv(csv_path)
-        print(f'Demographic features saved to {csv_path}')
+        print(f'institutional features saved to {csv_path}')
 
 
 def create_click_features(clickstream, course, feature_list, id_cols, out_dir, hdf, to_csv=True, MAX_SECONDS=900,
@@ -70,7 +70,7 @@ def create_click_features(clickstream, course, feature_list, id_cols, out_dir, h
     Parameters
     ----------
     clickstream : Pandas DataFrame
-        Student-by-course-level demographic information (including prior academic history)
+        Student-by-course-level institutional information (including prior academic history)
 
     course: Pandas DataFrame
         Course-level information such as duration
@@ -303,7 +303,7 @@ def create_labels(student_info, enrollment, label_dict, id_cols, out_dir, hdf, t
             for threshold in label_dict['threshold']:
                 if threshold == 'median':
                     stud_next_year['next_year_over_median'] = stud_next_year.groupby('course_id')[
-                        'next_year_GPA'].transform(lambda x: (x > x.median()).astype(int))
+                        'next_year_GPA'].transform(lambda x: (x >= x.median()).astype(int))
                     stud_next_year['next_year_over_median'] = np.where(stud_next_year['next_year_GPA'].notnull(),
                                                                        stud_next_year['next_year_over_median'], np.nan)
                     labels = labels.merge(stud_next_year.drop(columns='next_year_GPA'), how='left')
@@ -315,6 +315,63 @@ def create_labels(student_info, enrollment, label_dict, id_cols, out_dir, hdf, t
         csv_path = os.path.join(out_dir, 'labels.csv')
         labels.to_csv(csv_path)
         print(f'Labels saved to {csv_path}')
+
+
+def create_protected_attributes(student_info, clickstream, enrollment, attr_list, id_cols, out_dir, hdf, to_csv=True):
+    """
+    Construct protected attributes and save to disk
+
+    Parameters
+    ----------
+    student_info : Pandas DataFrame
+        Student-by-course information (including demographics, prior academic history, survey responses, etc.)
+
+    clickstream : Pandas DataFrame
+        Student-by-course-level institutional information (including prior academic history)
+
+    enrollment : Pandas DataFrame
+        Student-by-course enrollment records (with grades)
+
+    attr_list : list
+        List of protected attributes to create
+
+    id_cols : list
+        Columns of student(-by-course) identifiers
+
+    out_dir : str
+        Directory to save the resulting table
+
+    hdf : HDFStore object
+        Where the resulting table is stored (comparable to a schema in databases)
+
+    to_csv : boolean
+        Whether to save the table in a .csv file (in addition to HDF) for easier examination
+
+    Returns
+    -------
+    None
+    """
+    attrs_protected = student_info[id_cols]
+    for attr in attr_list:
+        if attr == 'ethnicity':
+            attrs_protected['ethnicity'] = student_info['eth2009rollupforreporting']
+        elif attr == 'gender':
+            attrs_protected['gender'] = student_info['gender']
+        elif attr == 'low_income':
+            attrs_protected['low_income'] = student_info['lowincomeflag'].map({'Y': 'Low-income',
+                                                                               'N': 'Not Low-income'})
+        elif attr == 'prior_achievement':
+            attrs_protected['hsgpa'] = student_info['hsgpa']
+        elif attr == 'current_achievement':
+            attrs_protected['gpacumulative'] = student_info['gpacumulative']
+    attrs_protected.set_index(id_cols, inplace=True)
+
+    hdf.put('protected_attributes', attrs_protected)
+    print('Protected attributes saved to HDFStore')
+    if to_csv:
+        csv_path = os.path.join(out_dir, 'protected_attributes.csv')
+        attrs_protected.to_csv(csv_path)
+        print(f'Protected attributes saved to {csv_path}')
 
 
 def run(semantic_dir, feature_dir, feature_config):
@@ -348,9 +405,10 @@ def run(semantic_dir, feature_dir, feature_config):
         enrollment = hdf_semantic['course_enrolled']
 
     with pd.HDFStore(os.path.join(feature_dir, 'feature.h5')) as hdf_feature:
-        feat_dem = create_demographic_features(student_info, config.get('demographic'), id_cols, feature_dir,
-                                               hdf_feature)
-        feat_click = create_click_features(clickstream, course, config.get('click'), id_cols, feature_dir, hdf_feature,
-                                               cat_dict=config.get('url_cats'))
-        feat_svy = create_survey_features(student_info, config.get('survey'), id_cols, feature_dir, hdf_feature)
-        labels = create_labels(student_info, enrollment, config.get('label'), id_cols, feature_dir, hdf_feature)
+        create_institutional_features(student_info, config.get('institutional'), id_cols, feature_dir, hdf_feature)
+        create_click_features(clickstream, course, config.get('click'), id_cols, feature_dir, hdf_feature,
+                              cat_dict=config.get('url_cats'))
+        create_survey_features(student_info, config.get('survey'), id_cols, feature_dir, hdf_feature)
+        create_labels(student_info, enrollment, config.get('label'), id_cols, feature_dir, hdf_feature)
+        create_protected_attributes(student_info, clickstream, enrollment, config.get('protected'), id_cols,
+                                    feature_dir, hdf_feature)
