@@ -1,0 +1,70 @@
+institutional:
+  - age
+  - sattotalscore
+  - hsgpa
+  - gpacumulative
+  - isfemale
+  - istransfer
+  - islowincome
+  - isfirstgen
+  - isurm
+
+click:
+  - total_clicks
+#  - total_clicks_by_week
+  - total_clicks_first_two_wks
+  - total_clicks_by_category
+  - total_time
+#  - total_time_by_week
+  - total_time_first_two_wks
+  - total_time_by_category
+
+survey:
+  - effort_regulation
+  - time_management
+  - self_efficacy
+  - environment_management
+
+label:
+  scope:
+    - cur_course
+    - next_year
+  threshold:
+#    - A-
+#    - C-
+    - median
+
+protected:
+  - ethnicity
+  - gender
+  - low_income
+  - prior_achievement
+  - current_achievement
+
+url_cats:
+  portal:
+    - homepage
+    - front_page
+  tasks:
+    - quizzes
+    - assignments
+    - assignment_groups
+  content:
+    - modules
+    - module
+    - folders
+    - files
+    - file_contents
+    - pages
+    - tabs
+    - wiki
+    - img
+  communication:
+    - discussion_topics
+    - conferences
+    - announcements
+    - users
+    - groups
+    - enrollments
+  performance:
+    - grades

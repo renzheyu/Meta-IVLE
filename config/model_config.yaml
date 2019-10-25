@@ -1,0 +1,28 @@
+features:
+  - institutional
+  - click
+  - survey
+  - click+survey
+  - institutional+survey
+  - institutional+click
+  - institutional+click+survey
+
+labels:
+  - cur_course_over_median
+  - next_year_over_median
+#  - cur_course_over_A-
+#  - cur_course_over_C-
+
+models:
+  - logistic_regression
+  - svm
+  - random_forest
+
+metrics:
+  - accuracy
+#  - roc_auc
+  - false_positive_rate
+  - false_negative_rate
+
+random_seed: 99
+max_var_miss: 0.35
