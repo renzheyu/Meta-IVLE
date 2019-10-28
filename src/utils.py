@@ -265,3 +265,34 @@ def split_bool_cols(df):
     bool_cols = [col for col in df_num.columns if np.isin(df_num[col].dropna().unique(), [0, 1]).all()]
     non_bool_cols = df_num.columns.drop(bool_cols).tolist()
     return bool_cols, non_bool_cols
+
+def get_pred_eval_hits(metric_name, y_true, y_pred):
+    """
+    Evaluate prediction results of a binary classification given a metric name
+
+    Parameters
+    ----------
+    metric_name : string
+
+    y_true : numpy array
+        True values of the target
+
+    y_pred : numpy array
+        Predicted values (0 or 1) of the target
+
+    Returns
+    -------
+    hits : numpy array or Pandas Series
+        Binary indicators of whether each prediction should be regarded as "correct" given the metric
+    """
+    if metric_name == 'acc':
+        hits = np.where(y_true == y_pred, 1, 0)
+    elif metric_name == 'fpr':
+        hits = np.where(y_true == 0,
+                        np.where(y_pred==1, 1, 0),
+                        np.nan)
+    elif metric_name == 'fnr':
+        hits = np.where(y_true == 1,
+                        np.where(y_pred == 0, 1, 0),
+                        np.nan)
+    return hits
