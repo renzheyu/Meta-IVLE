@@ -359,11 +359,16 @@ def create_protected_attributes(student_info, clickstream, enrollment, attr_list
             attrs_protected['gender'] = student_info['gender']
         elif attr == 'low_income':
             attrs_protected['low_income'] = student_info['lowincomeflag'].map({'Y': 'Low-income',
-                                                                               'N': 'Not Low-income'})
-        elif attr == 'prior_achievement':
-            attrs_protected['hsgpa'] = student_info['hsgpa']
+                                                                               'N': 'Not Low-Income'})
+        elif attr == 'first_generation':
+            attrs_protected['first_gen'] = student_info['firstgenerationflag'].map({'Y': 'First-Gen',
+                                                                                    'N': 'Non First-Gen'})
+        elif attr == 'hs_achievement':
+            attrs_protected['hs_gpa'] = pd.qcut(student_info['hsgpa'], 4,
+                                                labels=[f'hsGPA: Q{i+1}' for i in range(4)]).astype(str)
         elif attr == 'current_achievement':
-            attrs_protected['gpacumulative'] = student_info['gpacumulative']
+            attrs_protected['cum_gpa'] = pd.qcut(student_info['gpacumulative'], 4,
+                                                 labels=[f'cumGPA: Q{i+1}' for i in range(4)]).astype(str)
     attrs_protected.set_index(id_cols, inplace=True)
 
     hdf.put('protected_attributes', attrs_protected)
