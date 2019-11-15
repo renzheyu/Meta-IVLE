@@ -38,8 +38,8 @@ protected:
   - ethnicity
   - gender
   - low_income
-  - prior_achievement
-  - current_achievement
+  - first_generation
+  - hs_achievement
 
 url_cats:
   portal:
