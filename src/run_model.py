@@ -16,18 +16,31 @@ from sklearn.ensemble import RandomForestClassifier
 from aequitas.group import Group
 from aequitas.bias import Bias
 
-def create_master_table(hdf, max_var_miss, label_table_names, table_names=None, merge_how='outer', standardize=False,
-                        by=None):
+def create_master_table(hdf_in, hdf_out, out_dir, max_var_miss, label_table_names,
+                        protected_table_name='protected_attributes', table_names=None, merge_how='outer',
+                        standardize=False, by=None, to_csv=True):
     """
     Merge and clean separate feature tables into a master table
 
     Parameters
     ----------
-    hdf : HDFStore object
+    hdf_in : HDFStore object
         Where the feature tables are stored (comparable to a schema in databases)
+
+    hdf_out : HDFStore object
+        Where the resulting master table is stored (comparable to a schema in databases)
+
+    out_dir : str
+        Directory to save the resulting table
+
+    max_var_miss : float
+        If a record is missing on more than this proportion of features, drop it
 
     label_table_names : list
         List of tables that contain labels/outcome variables
+
+    protected_table_name : string
+        Table that contains protected attributes
 
     table_names : list
         List of tables (stored in hdf) to be merged; if None, all tables in hdf will be merged
@@ -42,8 +55,8 @@ def create_master_table(hdf, max_var_miss, label_table_names, table_names=None, 
     by : list
         List of variables that define the group within which features are standardized, can be
 
-    max_var_miss : float
-        If a record is missing on more than this proportion of features, drop it
+    to_csv : boolean
+        Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
     Returns
     -------
@@ -51,25 +64,34 @@ def create_master_table(hdf, max_var_miss, label_table_names, table_names=None, 
         Combined feature/label table with two levels of columns, where the first level identifies the original table
         names (e.g., 'demographics') and the second level includes the columns from the original tables
     """
+    print('Reading feature tables and creating master table')
     if table_names is None:
-        table_names = [key.strip('/') for key in hdf.keys()]
+        table_names = [key.strip('/') for key in hdf_in.keys()]
     table_list = []
     for tname in table_names:
-        table = hdf[tname]
+        table = hdf_in[tname]
         table.columns = pd.MultiIndex.from_product([[tname], table.columns])
         table_list.append(table)
     master_table = reduce(lambda x, y: pd.merge(x, y, left_index=True, right_index=True, how=merge_how), table_list)
     # Remove rows that are missing in any labels
     label_miss = master_table[label_table_names].isnull().any(axis=1)
-    # Remove rows that have too many missing features
-    over_var_miss = (master_table.isnull().sum(axis=1) >= max_var_miss * len(master_table.columns))
-    print()
-    master_table = master_table[~(label_miss|over_var_miss)]
+    # Remove rows that have too many missing features (not including protected attributes)
+    over_var_miss = (master_table.drop(protected_table_name, axis=1).isnull().sum(axis=1) >=
+                     max_var_miss * len(master_table.drop(protected_table_name, axis=1).columns))
+    master_table = master_table[~(label_miss | over_var_miss)]
     if standardize:
         bool_cols, non_bool_cols = split_bool_cols(master_table)
-        non_bool_unprotected_cols = [col for col in non_bool_cols if 'protected' not in col[0]]
+        non_bool_unprotected_cols = [col for col in non_bool_cols if col[0] != protected_table_name]
         master_table[non_bool_unprotected_cols] = master_table.groupby(by)[non_bool_unprotected_cols].transform(
             robust_scale)
+
+    hdf_out.put('master_table', master_table)
+    print('Master table info saved to HDFStore')
+    if to_csv:
+        csv_path = os.path.join(out_dir, 'master_table.csv')
+        master_table.to_csv(csv_path)
+        print(f'Master table saved to {csv_path}')
+
     return master_table
 
 
@@ -124,6 +146,8 @@ def get_labels(master_table, label_name, label_group='labels', to_numpy=False):
     label_table : Pandas DataFrame
     """
     label_table = master_table[label_group][label_name]
+    if to_numpy:
+        label_table = label_table.to_numpy()
     return label_table
 
 
@@ -302,7 +326,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
         pred_eval_score.to_csv(csv_path, index=False)
         print(f'Prediction scores saved to {csv_path}')
 
-    return pred_eval_hits, pred_eval_score, model_comp_res
+    # return pred_eval_hits, pred_eval_score, model_comp_res
 
 
 def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_col='model_id', to_csv=True):
@@ -340,7 +364,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_co
     -------
     bias : Pandas DataFrame
         Bias measures against different groups as calculated by aequitas.bias
-        Ex:
+        Format:
             model_col | attribute_name | attribute_value | bias1_disparity | bias1_significance | ...
     """
     def compute_bias(df, ref_groups):
@@ -363,7 +387,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_co
         bias.to_csv(csv_path, index=False)
         print(f'Prediction bias analysis saved to {csv_path}')
 
-    return bias
+    # return bias
 
 
 def run(feature_dir, result_dir, model_config):
@@ -394,12 +418,12 @@ def run(feature_dir, result_dir, model_config):
     metrics = config.get('metrics')
 
     with pd.HDFStore(os.path.join(feature_dir, 'feature.h5')) as hdf_feature:
-        master_table = create_master_table(hdf_feature, max_var_miss=config.get('max_var_miss'), label_table_names=[
-            'labels'], standardize=True, by=['course_id'])
-
-    with pd.HDFStore(os.path.join(result_dir, 'result.h5')) as hdf_result:
-        model_info, pred_res = get_pred_res(master_table, features, labels, models, 'course_id', rseed=config.get(
-            'random_seed'), out_dir=result_dir, hdf=hdf_result)
-        pred_hits, pred_scores, model_comp_res = eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
-        pred_res_bias = audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
-                                       ref_groups=config.get('ref_groups'), out_dir=result_dir, hdf=hdf_result)
+        with pd.HDFStore(os.path.join(result_dir, 'result.h5')) as hdf_result:
+            master_table = create_master_table(hdf_in=hdf_feature, hdf_out=hdf_result, out_dir=result_dir,
+                                               max_var_miss=config.get('max_var_miss'), label_table_names=['labels'],
+                                               standardize=True, by=['course_id'])
+            model_info, pred_res = get_pred_res(master_table, features, labels, models, 'course_id', rseed=config.get(
+                'random_seed'), out_dir=result_dir, hdf=hdf_result)
+            eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
+            audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
+                                           ref_groups=config.get('ref_groups'), out_dir=result_dir, hdf=hdf_result)
