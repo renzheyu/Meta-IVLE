@@ -243,7 +243,7 @@ def load_clickstream(course_dir_list, out_dir, hdf, to_csv=True):
         Where the resulting table is stored (comparable to a schema in databases)
 
     to_csv : boolean
-        Whether to store the table in a .csv file (in addition to hdf) for easier examnination
+        Whether to store the table in a .csv file (in addition to hdf_in) for easier examnination
 
     Returns
     -------
@@ -292,7 +292,7 @@ def load_enrollment(enrollment_file, out_dir, hdf, to_csv=True):
         Where the resulting table is stored (comparable to a schema in databases)
 
     to_csv : boolean
-        Whether to store the table in a .csv file (in addition to hdf) for easier examnination
+        Whether to store the table in a .csv file (in addition to hdf_in) for easier examnination
         
     Returns
     -------

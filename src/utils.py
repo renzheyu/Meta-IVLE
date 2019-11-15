@@ -296,3 +296,20 @@ def get_pred_eval_hits(metric_name, y_true, y_pred):
                         np.where(y_pred == 0, 1, 0),
                         np.nan)
     return hits
+
+def categorize_table(df):
+    """
+    Convert all string columns of the existing table into category columns in order to preserve order
+
+    Parameters
+    ----------
+    df : Pandas DataFrame
+
+    Returns
+    -------
+    df_cat : Pandas DataFrame
+    """
+    df_cat = df.copy()
+    for col in df_cat.select_dtypes(include=object).columns:
+        df_cat[col] = df[col].astype('category', categories=df_cat[col].unique(), ordered=True)
+    return df_cat
