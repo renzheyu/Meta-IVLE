@@ -287,7 +287,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
-    Returns
+    Results
     -------
     pred_eval_hits : Pandas DataFrame
         Raw prediction results concatenated with binary evaluation of these results given each metric
@@ -302,7 +302,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
         Format:
             model_col | metric1 | metric2 | ...
 
-    model_comp : Pandas DataFrame
+    model_comp : Pandas DataFrame (currently not used)
         Results of statistical tests of pairwise model result comparisons
         Format:
             model_id_1 | model_id_2 | diff_metric1 | p_val_metrics1 | ...
@@ -316,6 +316,8 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
     if comp_model:
         # TODO
         pass
+    else:
+        model_comp_res = None
 
     hdf.put('pred_score', pred_eval_score)
     print('Prediction scores saved to HDFStore')
@@ -356,7 +358,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_co
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
-    Returns
+    Results
     -------
     bias : Pandas DataFrame
         Bias measures against different groups as calculated by aequitas.bias
