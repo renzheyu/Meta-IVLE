@@ -1,0 +1,25 @@
+features:
+  - institutional
+  - institutional+click
+  - institutional+click+survey
+
+labels:
+  - cur_course_over_median
+  - next_year_over_median
+
+models:
+  - logistic_regression
+  - svm
+  - random_forest
+
+metrics:
+  - acc
+  - fpr
+  - fnr
+
+ref_groups:
+  ethnicity: 'White, non-Hispanic'
+  gender: 'Male'
+
+random_seed: 1
+max_var_miss: 0.25

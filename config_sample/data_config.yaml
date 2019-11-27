@@ -1,0 +1,30 @@
+# Starting dates of each quarter
+term_start_date:
+    Summer 1 2019: 2019-6-20
+    Fall 2019: 2019-9-25
+
+# Course enrollment data, as a csv file
+enrollment_data: enrollments.csv
+
+# [Optional] List of course names, example format '16Fa CHEM 1P'
+course_list:
+    - 19S1 CHEM 5A
+    - 19Fa BIO 1
+
+# Variable name dictionary ('thesaurus') for student-level information tables, specific to each course
+col_dict:
+    acadyr:
+    year:
+    acadterm:
+    dept:
+    coursenum:
+    roster_randomid:
+    course_total:
+        19S1 CHEM 5A: grade_finalscore
+    grade:
+        19Fa BIO 1: gradebook_grade
+    age:
+    gender:
+    eth2009rollupforreporting:
+    pre_er1:
+    pre_orsh1:
