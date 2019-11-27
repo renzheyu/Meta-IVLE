@@ -316,8 +316,6 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
     if comp_model:
         # TODO
         pass
-    else:
-        model_comp_res = None
 
     hdf.put('pred_score', pred_eval_score)
     print('Prediction scores saved to HDFStore')
@@ -325,8 +323,6 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
         csv_path = os.path.join(out_dir, 'pred_score.csv')
         pred_eval_score.to_csv(csv_path, index=False)
         print(f'Prediction scores saved to {csv_path}')
-
-    # return pred_eval_hits, pred_eval_score, model_comp_res
 
 
 def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_col='model_id', to_csv=True):
@@ -386,8 +382,6 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_co
         csv_path = os.path.join(out_dir, 'pred_bias.csv')
         bias.to_csv(csv_path, index=False)
         print(f'Prediction bias analysis saved to {csv_path}')
-
-    # return bias
 
 
 def run(feature_dir, result_dir, model_config):
