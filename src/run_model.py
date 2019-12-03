@@ -319,9 +319,9 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True
         print(f'Prediction scores saved to {csv_path}')
 
 
-def audit_fairness(pred_res, protected_attrs, metrics, ref_groups, out_dir, hdf, to_csv=True):
+def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, to_csv=True):
     """
-    Evaluate raw prediction results based on given metrics
+    Evaluate the fairness of raw prediction results
 
     Parameters
     ----------
@@ -334,9 +334,6 @@ def audit_fairness(pred_res, protected_attrs, metrics, ref_groups, out_dir, hdf,
         Raw protected attributes
         Ex:
             entity_id | attr1 | attr2 | ...
-
-    metrics : list
-        List of metric names
 
     ref_groups : dict
         Identifies the reference group for each protected attribute
@@ -357,19 +354,18 @@ def audit_fairness(pred_res, protected_attrs, metrics, ref_groups, out_dir, hdf,
         Format:
             model_id | attribute_name | attribute_value | bias1_disparity | bias1_significance | ...
     """
-    def compute_bias(df, ref_groups, metrics):
+    def compute_bias(df, ref_groups):
         g = Group()
         b = Bias()
         xtab, _ = g.get_crosstabs(df)
         bdf = b.get_disparity_predefined_groups(xtab, original_df=df, ref_groups_dict=ref_groups,
-                                                input_group_metrics=metrics, check_significance=True,
-                                                mask_significance=False)
+                                                check_significance=True, mask_significance=False)
         return bdf
 
     id_cols = protected_attrs.index.to_frame().columns
     df = pred_res.merge(protected_attrs.reset_index()).drop(id_cols, axis=1).rename(columns={'y_pred': 'score',
                                                                                              'y_true': 'label_value'})
-    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups, metrics=metrics).reset_index(drop=True)
+    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups).reset_index(drop=True)
 
     hdf.put('pred_bias', bias)
     print('Prediction bias analysis saved to HDFStore')
@@ -405,8 +401,6 @@ def run(feature_dir, result_dir, model_config):
     labels = config.get('labels')
     models = config.get('models')
     metrics = config.get('metrics')
-    metrics_bias = [metric for metric in metrics if metric in ['ppr', 'pprev', 'precision', 'fdr', 'for', 'fpr',
-                                                               'fnr', 'tpr', 'tnr', 'npv']]
 
     with pd.HDFStore(os.path.join(feature_dir, 'feature.h5')) as hdf_feature:
         with pd.HDFStore(os.path.join(result_dir, 'result.h5')) as hdf_result:
@@ -416,5 +410,5 @@ def run(feature_dir, result_dir, model_config):
             model_info, pred_res = get_pred_res(master_table, features, labels, models, 'course_id', rseed=config.get(
                 'random_seed'), out_dir=result_dir, hdf=hdf_result)
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
-            audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'], metrics=metrics_bias,
-                                           ref_groups=config.get('ref_groups'), out_dir=result_dir, hdf=hdf_result)
+            audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'], ref_groups=config.get(
+                'ref_groups'), out_dir=result_dir, hdf=hdf_result)
