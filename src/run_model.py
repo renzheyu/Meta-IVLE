@@ -179,8 +179,7 @@ def get_model(model_name, params=None):
     return clf
 
 
-def get_pred_res(master_table, features, labels, models, group_var, rseed, out_dir, hdf, model_col='model_id',
-                 to_csv=True):
+def get_pred_res(master_table, features, labels, models, group_var, rseed, out_dir, hdf, to_csv=True):
     """
     Configure all requested prediction models (as combinations of different features, labels and models),
     run the models using group(course)-level ross validation and save raw predictions
@@ -213,9 +212,6 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
 
-    model_col : string
-        Resulting column name that identifies unique models
-
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
@@ -229,7 +225,6 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
     """
     # Construct empty model info table and add models row by row
     model_info = pd.DataFrame([], columns=['model_id', 'feature', 'label', 'model'])
-    pred_res = pd.DataFrame([], columns=[''])
     unique_id = master_table.index.to_frame().reset_index(drop=True)
     pred_res = pd.DataFrame([], columns=unique_id.columns.tolist()+['model_id', 'y_true', 'y_pred'])
     for (feature, label) in product(features, labels):
@@ -246,7 +241,7 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
             model_id = len(model_info) + 1
             model_info = model_info.append({'model_id': model_id, 'feature': feature, 'label': label, 'model': model},
                               ignore_index=True)
-            res = pd.DataFrame({model_col: model_id, 'y_true': y, 'y_pred': predicted})
+            res = pd.DataFrame({'model_id': model_id, 'y_true': y, 'y_pred': predicted})
             pred_res = pred_res.append(pd.concat([unique_id, res], axis=1))
 
     hdf.put('model_info', model_info)
@@ -258,7 +253,7 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
     return model_info, pred_res
 
 
-def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_model=False, to_csv=True):
+def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True):
     """
     Evaluate raw prediction results based on given metrics
 
@@ -267,7 +262,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
     pred_res : Pandas DataFrame
         Raw prediction results, one row per model per entity
         Format:
-            entity_id | model_col | y_true | y_pred
+            entity_id | model_id | y_true | y_pred
 
     metrics : list
         List of metric names
@@ -277,9 +272,6 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
 
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
-
-    model_col : string
-        Column name in pred_res that identifies unique models
 
     comp_model : boolean
         If true, compare each pair of models and generate and return a comparison table
@@ -295,12 +287,12 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
         contributing to the denominator, and NaN to those not included in the calculation (Ex. false positive rate =
         false positives / true negatives)
         Format:
-            entity_id | model_col | metric1_ind | metric2_ind | ...
+            entity_id | model_id | metric1_ind | metric2_ind | ...
 
     pred_eval_score : Pandas DataFrame
         Evaluation score of prediction results, one rwo per model
         Format:
-            model_col | metric1 | metric2 | ...
+            model_id | metric1 | metric2 | ...
 
     model_comp : Pandas DataFrame (currently not used)
         Results of statistical tests of pairwise model result comparisons
@@ -311,7 +303,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
     for metric in metrics:
         print(f'Calculating {metric}...')
         pred_eval_hits[metric] = get_pred_eval_hits(metric, pred_res['y_true'], pred_res['y_pred'])
-    pred_eval_score = pred_eval_hits.groupby(model_col)[metrics].mean().reset_index()
+    pred_eval_score = pred_eval_hits.groupby('model_id')[metrics].mean().reset_index()
     pred_eval_hits[metrics] = pred_eval_hits[metrics].add_suffix('_ind')
     if comp_model:
         # TODO
@@ -327,7 +319,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
         print(f'Prediction scores saved to {csv_path}')
 
 
-def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_col='model_id', to_csv=True):
+def audit_fairness(pred_res, protected_attrs, metrics, ref_groups, out_dir, hdf, to_csv=True):
     """
     Evaluate raw prediction results based on given metrics
 
@@ -336,12 +328,15 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_co
     pred_res : Pandas DataFrame
         Raw prediction results, one row per model per entity
         Ex:
-            entity_id | model_col | y_true | y_pred
+            entity_id | model_id | y_true | y_pred
 
     protected_attrs : Pandas DataFrame
         Raw protected attributes
         Ex:
             entity_id | attr1 | attr2 | ...
+
+    metrics : list
+        List of metric names
 
     ref_groups : dict
         Identifies the reference group for each protected attribute
@@ -352,9 +347,6 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_co
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
 
-    model_col : string
-        Column name in pred_res that identifies unique models
-
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
@@ -363,20 +355,21 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_co
     bias : Pandas DataFrame
         Bias measures against different groups as calculated by aequitas.bias
         Format:
-            model_col | attribute_name | attribute_value | bias1_disparity | bias1_significance | ...
+            model_id | attribute_name | attribute_value | bias1_disparity | bias1_significance | ...
     """
-    def compute_bias(df, ref_groups):
+    def compute_bias(df, ref_groups, metrics):
         g = Group()
         b = Bias()
         xtab, _ = g.get_crosstabs(df)
         bdf = b.get_disparity_predefined_groups(xtab, original_df=df, ref_groups_dict=ref_groups,
-                                                check_significance=True, mask_significance=False)
+                                                input_group_metrics=metrics, check_significance=True,
+                                                mask_significance=False)
         return bdf
 
     id_cols = protected_attrs.index.to_frame().columns
     df = pred_res.merge(protected_attrs.reset_index()).drop(id_cols, axis=1).rename(columns={'y_pred': 'score',
                                                                                              'y_true': 'label_value'})
-    bias = df.groupby(model_col).apply(compute_bias, (ref_groups)).reset_index(drop=True)
+    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups, metrics=metrics).reset_index(drop=True)
 
     hdf.put('pred_bias', bias)
     print('Prediction bias analysis saved to HDFStore')
@@ -412,6 +405,8 @@ def run(feature_dir, result_dir, model_config):
     labels = config.get('labels')
     models = config.get('models')
     metrics = config.get('metrics')
+    metrics_bias = [metric for metric in metrics if metric in ['ppr', 'pprev', 'precision', 'fdr', 'for', 'fpr',
+                                                               'fnr', 'tpr', 'tnr', 'npv']]
 
     with pd.HDFStore(os.path.join(feature_dir, 'feature.h5')) as hdf_feature:
         with pd.HDFStore(os.path.join(result_dir, 'result.h5')) as hdf_result:
@@ -421,5 +416,5 @@ def run(feature_dir, result_dir, model_config):
             model_info, pred_res = get_pred_res(master_table, features, labels, models, 'course_id', rseed=config.get(
                 'random_seed'), out_dir=result_dir, hdf=hdf_result)
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
-            audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
+            audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'], metrics=metrics_bias,
                                            ref_groups=config.get('ref_groups'), out_dir=result_dir, hdf=hdf_result)
