@@ -1,17 +1,11 @@
 features:
   - institutional
-  - click
-  - survey
   - institutional+click
-  - institutional+survey
-  - click+survey
   - institutional+click+survey
 
 labels:
   - cur_course_over_median
   - next_year_over_median
-#  - cur_course_over_A-
-#  - cur_course_over_C-
 
 models:
   - logistic_regression
@@ -20,16 +14,12 @@ models:
 
 metrics:
   - acc
-#  - roc_auc
   - fpr
   - fnr
 
 ref_groups:
   ethnicity: 'White, non-Hispanic'
   gender: 'Male'
-  low_income: 'Not Low-Income'
-  first_gen: 'Non First-Gen'
-  hs_gpa: 'hsGPA: Q4'
 
 random_seed: 1
 max_var_miss: 0.25
