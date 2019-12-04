@@ -359,7 +359,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, to_csv=T
         b = Bias()
         xtab, _ = g.get_crosstabs(df)
         bdf = b.get_disparity_predefined_groups(xtab, original_df=df, ref_groups_dict=ref_groups,
-                                                check_significance=True, mask_significance=False)
+                                                check_significance=None, mask_significance=False)
         return bdf
 
     id_cols = protected_attrs.index.to_frame().columns
