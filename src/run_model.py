@@ -6,9 +6,9 @@ from itertools import product
 from src.utils import *
 
 from sklearn.pipeline import make_pipeline, make_union
-from sklearn.preprocessing import robust_scale
+from sklearn.preprocessing import robust_scale, Imputer
 from sklearn.impute import SimpleImputer, MissingIndicator
-from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict
+from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict, GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
@@ -151,7 +151,7 @@ def get_labels(master_table, label_name, label_group='labels', to_numpy=False):
     return label_table
 
 
-def get_model(model_name, params=None):
+def get_tuned_model(model_name, X, y, groups, params=None):
     """
     Configure a classifier instance given the input model name
     Currently no hyperparameter tuning but can accommodate in future versions
@@ -159,6 +159,12 @@ def get_model(model_name, params=None):
     Parameters
     ----------
     model_name : str
+
+    X: Pandas DataFrame
+        The feature matrix obtained from master table
+
+    y: Pandas DataFrame
+        The label array
 
     params : dict or None
         If not None, a dictionary of parameters for the specified classifier, in the form of {param_name: param_value}
@@ -168,19 +174,28 @@ def get_model(model_name, params=None):
     clf : Scikit-learn estimator
         Configured classifier
     """
+
+    imputer = Imputer()
+    x_imputed = imputer.fit_transform(X)
     clf_dict = {
         'logistic_regression': LogisticRegression(),
         'svm': SVC(),
         'random_forest': RandomForestClassifier()
     }
     clf = clf_dict[model_name]
-    if params is not None:
-        clf.set_params(**params)
+#     logo = LeaveOneGroupOut()
+#
+#     if params is not None:
+#        clf_tuned = GridSearchCV(clf, params, cv=logo)
+#        clf_tuned.fit(x_imputed, y, groups=groups)
+#        best_params = clf_tuned.best_params_
+#        print(best_params)
+#        clf.set_params(**best_params)
+
+    clf.set_params(**params)
     return clf
 
-
-def get_pred_res(master_table, features, labels, models, group_var, rseed, out_dir, hdf, model_col='model_id',
-                 to_csv=True):
+def get_pred_res(master_table, features, labels, models, group_var, rseed, out_dir, hdf, to_csv=True):
     """
     Configure all requested prediction models (as combinations of different features, labels and models),
     run the models using group(course)-level ross validation and save raw predictions
@@ -213,9 +228,6 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
 
-    model_col : string
-        Resulting column name that identifies unique models
-
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
@@ -229,16 +241,19 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
     """
     # Construct empty model info table and add models row by row
     model_info = pd.DataFrame([], columns=['model_id', 'feature', 'label', 'model'])
-    pred_res = pd.DataFrame([], columns=[''])
     unique_id = master_table.index.to_frame().reset_index(drop=True)
     pred_res = pd.DataFrame([], columns=unique_id.columns.tolist()+['model_id', 'y_true', 'y_pred'])
+    model_id = 1 #DELETE LATER
     for (feature, label) in product(features, labels):
         X = get_features(master_table, feature).to_numpy()
         y = get_labels(master_table, label).to_numpy()
         groups = master_table.index.get_level_values(group_var)
         for model in models:
+            #parameters = parameter_configs.get(model)
+            print(model_id)
+            parameters = parameter_configs.get(model_id)
             print(f'Predicting {label} using {feature} via {model}...')
-            clf = get_model(model, params={'random_state': rseed})
+            clf = get_tuned_model(model, X, y, groups, params=parameters)
             logo = LeaveOneGroupOut()
             estimator = make_pipeline(make_union(SimpleImputer(strategy='constant', fill_value=0), MissingIndicator(
                 features='all')), clf)
@@ -246,8 +261,9 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
             model_id = len(model_info) + 1
             model_info = model_info.append({'model_id': model_id, 'feature': feature, 'label': label, 'model': model},
                               ignore_index=True)
-            res = pd.DataFrame({model_col: model_id, 'y_true': y, 'y_pred': predicted})
+            res = pd.DataFrame({'model_id': model_id, 'y_true': y, 'y_pred': predicted})
             pred_res = pred_res.append(pd.concat([unique_id, res], axis=1))
+            model_id += 1 #DELETE LATER
 
     hdf.put('model_info', model_info)
     print('Model info saved to HDFStore')
@@ -257,8 +273,7 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
         print(f'Model info saved to {csv_path}')
     return model_info, pred_res
 
-
-def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_model=False, to_csv=True):
+def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True):
     """
     Evaluate raw prediction results based on given metrics
 
@@ -267,7 +282,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
     pred_res : Pandas DataFrame
         Raw prediction results, one row per model per entity
         Format:
-            entity_id | model_col | y_true | y_pred
+            entity_id | model_id | y_true | y_pred
 
     metrics : list
         List of metric names
@@ -278,16 +293,13 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
 
-    model_col : string
-        Column name in pred_res that identifies unique models
-
     comp_model : boolean
         If true, compare each pair of models and generate and return a comparison table
 
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
-    Returns
+    Results
     -------
     pred_eval_hits : Pandas DataFrame
         Raw prediction results concatenated with binary evaluation of these results given each metric
@@ -295,14 +307,14 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
         contributing to the denominator, and NaN to those not included in the calculation (Ex. false positive rate =
         false positives / true negatives)
         Format:
-            entity_id | model_col | metric1_ind | metric2_ind | ...
+            entity_id | model_id | metric1_ind | metric2_ind | ...
 
     pred_eval_score : Pandas DataFrame
         Evaluation score of prediction results, one rwo per model
         Format:
-            model_col | metric1 | metric2 | ...
+            model_id | metric1 | metric2 | ...
 
-    model_comp : Pandas DataFrame
+    model_comp : Pandas DataFrame (currently not used)
         Results of statistical tests of pairwise model result comparisons
         Format:
             model_id_1 | model_id_2 | diff_metric1 | p_val_metrics1 | ...
@@ -311,7 +323,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
     for metric in metrics:
         print(f'Calculating {metric}...')
         pred_eval_hits[metric] = get_pred_eval_hits(metric, pred_res['y_true'], pred_res['y_pred'])
-    pred_eval_score = pred_eval_hits.groupby(model_col)[metrics].mean().reset_index()
+    pred_eval_score = pred_eval_hits.groupby('model_id')[metrics].mean().reset_index()
     pred_eval_hits[metrics] = pred_eval_hits[metrics].add_suffix('_ind')
     if comp_model:
         # TODO
@@ -326,19 +338,16 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, model_col='model_id', comp_mo
         pred_eval_score.to_csv(csv_path, index=False)
         print(f'Prediction scores saved to {csv_path}')
 
-    # return pred_eval_hits, pred_eval_score, model_comp_res
-
-
-def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_col='model_id', to_csv=True):
+def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, to_csv=True):
     """
-    Evaluate raw prediction results based on given metrics
+    Evaluate the fairness of raw prediction results
 
     Parameters
     ----------
     pred_res : Pandas DataFrame
         Raw prediction results, one row per model per entity
         Ex:
-            entity_id | model_col | y_true | y_pred
+            entity_id | model_id | y_true | y_pred
 
     protected_attrs : Pandas DataFrame
         Raw protected attributes
@@ -354,31 +363,28 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_co
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
 
-    model_col : string
-        Column name in pred_res that identifies unique models
-
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
-    Returns
+    Results
     -------
     bias : Pandas DataFrame
         Bias measures against different groups as calculated by aequitas.bias
         Format:
-            model_col | attribute_name | attribute_value | bias1_disparity | bias1_significance | ...
+            model_id | attribute_name | attribute_value | bias1_disparity | bias1_significance | ...
     """
     def compute_bias(df, ref_groups):
         g = Group()
         b = Bias()
         xtab, _ = g.get_crosstabs(df)
         bdf = b.get_disparity_predefined_groups(xtab, original_df=df, ref_groups_dict=ref_groups,
-                                                check_significance=True, mask_significance=False)
+                                                check_significance=None, mask_significance=False)
         return bdf
 
     id_cols = protected_attrs.index.to_frame().columns
     df = pred_res.merge(protected_attrs.reset_index()).drop(id_cols, axis=1).rename(columns={'y_pred': 'score',
                                                                                              'y_true': 'label_value'})
-    bias = df.groupby(model_col).apply(compute_bias, (ref_groups)).reset_index(drop=True)
+    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups).reset_index(drop=True)
 
     hdf.put('pred_bias', bias)
     print('Prediction bias analysis saved to HDFStore')
@@ -387,10 +393,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, model_co
         bias.to_csv(csv_path, index=False)
         print(f'Prediction bias analysis saved to {csv_path}')
 
-    # return bias
-
-
-def run(feature_dir, result_dir, model_config):
+def run(feature_dir, result_dir, model_config, parameter_config):
     """
     Run predictive models configured by the user and save results to the disk
 
@@ -405,25 +408,32 @@ def run(feature_dir, result_dir, model_config):
     model_config : str
         Name of model configuration file, with full path
 
+    parameter_config : str
+        Name of parameter configuration file, with full path
+
     Returns
     -------
     None
     """
 
-    config = load_yaml(model_config)
+    model_configs = load_yaml(model_config)
 
-    features = config.get('features')
-    labels = config.get('labels')
-    models = config.get('models')
-    metrics = config.get('metrics')
+    features = model_configs.get('features')
+    labels = model_configs.get('labels')
+    models = model_configs.get('models')
+    metrics = model_configs.get('metrics')
+
+    parameter_configs = load_yaml(parameter_config)
 
     with pd.HDFStore(os.path.join(feature_dir, 'feature.h5')) as hdf_feature:
         with pd.HDFStore(os.path.join(result_dir, 'result.h5')) as hdf_result:
             master_table = create_master_table(hdf_in=hdf_feature, hdf_out=hdf_result, out_dir=result_dir,
-                                               max_var_miss=config.get('max_var_miss'), label_table_names=['labels'],
+                                               max_var_miss=model_configs.get('max_var_miss'), label_table_names=['labels'],
                                                standardize=True, by=['course_id'])
-            model_info, pred_res = get_pred_res(master_table, features, labels, models, 'course_id', rseed=config.get(
+            model_info, pred_res = get_pred_res(master_table, features, labels, models, parameter_configs, 'course_id', rseed=model_configs.get(
                 'random_seed'), out_dir=result_dir, hdf=hdf_result)
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
-                                           ref_groups=config.get('ref_groups'), out_dir=result_dir, hdf=hdf_result)
+                                           ref_groups=model_configs.get('ref_groups'), out_dir=result_dir, hdf=hdf_result)
+
+

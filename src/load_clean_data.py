@@ -73,9 +73,6 @@ def clean_student_table(course_name, course_id, student_table, col_dict):
     cleaned_student_table: Pandas Dataframe
     """
 
-    # TODO: Better organize this temporary filter
-    if course_name == '16Fa CHEM 1P':
-        student_table = student_table[student_table['coursecode'].astype(int) == 40130]
     course_info_cols = parse_course_name(course_name)
     cleaned_student_table = pd.DataFrame([], index=range(student_table.shape[0]))
 
@@ -124,7 +121,9 @@ def clean_student_table(course_name, course_id, student_table, col_dict):
         if 'grade' not in cleaned_student_table.columns:
             cleaned_student_table['grade'] = np.nan
         if 'course_total' in cleaned_student_table.columns:
-            grade_to_fill = (cleaned_student_table['course_total'].notnull()) & (cleaned_student_table['grade'].isnull())
+            grade_to_fill = (cleaned_student_table['course_total'].notnull()) & (cleaned_student_table[
+                                                                                      'grade'].isnull())
+
             cleaned_student_table['grade'] = np.where(grade_to_fill, cleaned_student_table['course_total'].apply(
                 convert_score_to_letter), cleaned_student_table['grade'])
 
@@ -134,13 +133,13 @@ def clean_student_table(course_name, course_id, student_table, col_dict):
 def load_student_info(course_dir_list, out_dir, col_dict, hdf, to_csv=True):
     """
     Read and clean student info table for each course and merge across multiple courses
-    
+
     Parameters
     ----------
     course_dir_list : str
         List of course folders (with full path), each of which contains a student-level csv file and a subfolder of
         raw clickstream data
-        
+
     out_dir : str
         Directory to save the cleaned, merged table
 
@@ -153,7 +152,7 @@ def load_student_info(course_dir_list, out_dir, col_dict, hdf, to_csv=True):
 
     to_csv : boolean
         Whether to save the table in a .csv file (in addition to HDF) for easier examination
-    
+
     Returns
     -------
     None
@@ -229,7 +228,7 @@ def clean_merge_clicks(course_name, course_id, click_dir):
 def load_clickstream(course_dir_list, out_dir, hdf, to_csv=True):
     """
     Read and clean raw Canvas clickstream data for each course and merge across multiple courses
-    
+
     Parameters
     ----------
     course_dir_list : str
@@ -279,12 +278,12 @@ def load_enrollment(enrollment_file, out_dir, hdf, to_csv=True):
     The cleaning process does the following:
     - Change the data type of selected variables
     - Add 'Year' variable
-    
+
     Parameters
     ----------
     enrollment_file : str
         File name with full path
-    
+
     out_dir : str
         Directory to save the cleaned table
 
@@ -293,7 +292,7 @@ def load_enrollment(enrollment_file, out_dir, hdf, to_csv=True):
 
     to_csv : boolean
         Whether to store the table in a .csv file (in addition to hdf_in) for easier examnination
-        
+
     Returns
     -------
     None
@@ -329,24 +328,24 @@ def run(raw_data_dir, semantic_dir, data_config):
     """
     Read and organize raw data into semantic (entity-level) tables, stored in: 1) separate .csv files; and 2) a single
     HDFStore object
-    
+
     Parameters
     ----------
     raw_data_dir : str
         Directory where raw data are stored, organized as follows:
         - One csv file with course enrollment history for all students being analyzed
-        - Multiple course folders, each containing data for one course      
-        
+        - Multiple course folders, each containing data for one course
+
     semantic_dir : str
         Directory to store semantic tables
 
     data_config : str
         Name of data configuration file, with full path
-        
+
     Returns
     -------
     None
-    
+
     """
 
     config = load_yaml(data_config)
