@@ -287,7 +287,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True
 
     Results
     -------
-    pred_eval_hits : Pandas DataFrame
+    pred_eval_hits : Pandas DataFrame (to be deprecated)
         Raw prediction results concatenated with binary evaluation of these results given each metric
         For each metric, 1 assigned to predictions contributing to the numerator of its calculation, 0 to those
         contributing to the denominator, and NaN to those not included in the calculation (Ex. false positive rate =
