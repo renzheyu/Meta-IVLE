@@ -246,10 +246,16 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
 
     hdf.put('model_info', model_info)
     print('Model info saved to HDFStore')
+    hdf.put('pred_res', pred_res)
+    print('Raw prediction results saved to HDFStore')
     if to_csv:
         csv_path = os.path.join(out_dir, 'model_info.csv')
         model_info.to_csv(csv_path, index=False)
         print(f'Model info saved to {csv_path}')
+        csv_path = os.path.join(out_dir, 'pred_res.csv')
+        pred_res.to_csv(csv_path, index=False)
+        print(f'Raw prediction results saved to {csv_path}')
+
     return model_info, pred_res
 
 
@@ -359,7 +365,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, to_csv=T
         b = Bias()
         xtab, _ = g.get_crosstabs(df)
         bdf = b.get_disparity_predefined_groups(xtab, original_df=df, ref_groups_dict=ref_groups,
-                                                check_significance=None, mask_significance=False)
+                                                check_significance=True, mask_significance=False)
         return bdf
 
     id_cols = protected_attrs.index.to_frame().columns
