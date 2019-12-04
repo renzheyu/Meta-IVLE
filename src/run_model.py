@@ -150,7 +150,6 @@ def get_labels(master_table, label_name, label_group='labels', to_numpy=False):
         label_table = label_table.to_numpy()
     return label_table
 
-
 def get_tuned_model(model_name, X, y, groups, params=None):
     """
     Configure a classifier instance given the input model name
@@ -174,9 +173,9 @@ def get_tuned_model(model_name, X, y, groups, params=None):
     clf : Scikit-learn estimator
         Configured classifier
     """
-
     imputer = Imputer()
     x_imputed = imputer.fit_transform(X)
+
     clf_dict = {
         'logistic_regression': LogisticRegression(),
         'svm': SVC(),
@@ -263,14 +262,22 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
                               ignore_index=True)
             res = pd.DataFrame({'model_id': model_id, 'y_true': y, 'y_pred': predicted})
             pred_res = pred_res.append(pd.concat([unique_id, res], axis=1))
+
             model_id += 1 #DELETE LATER
+
 
     hdf.put('model_info', model_info)
     print('Model info saved to HDFStore')
+    hdf.put('pred_res', pred_res)
+    print('Raw prediction results saved to HDFStore')
     if to_csv:
         csv_path = os.path.join(out_dir, 'model_info.csv')
         model_info.to_csv(csv_path, index=False)
         print(f'Model info saved to {csv_path}')
+        csv_path = os.path.join(out_dir, 'pred_res.csv')
+        pred_res.to_csv(csv_path, index=False)
+        print(f'Raw prediction results saved to {csv_path}')
+
     return model_info, pred_res
 
 def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True):
@@ -301,7 +308,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True
 
     Results
     -------
-    pred_eval_hits : Pandas DataFrame
+    pred_eval_hits : Pandas DataFrame (to be deprecated)
         Raw prediction results concatenated with binary evaluation of these results given each metric
         For each metric, 1 assigned to predictions contributing to the numerator of its calculation, 0 to those
         contributing to the denominator, and NaN to those not included in the calculation (Ex. false positive rate =
@@ -337,6 +344,7 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True
         csv_path = os.path.join(out_dir, 'pred_score.csv')
         pred_eval_score.to_csv(csv_path, index=False)
         print(f'Prediction scores saved to {csv_path}')
+
 
 def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, to_csv=True):
     """
@@ -393,6 +401,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, to_csv=T
         bias.to_csv(csv_path, index=False)
         print(f'Prediction bias analysis saved to {csv_path}')
 
+
 def run(feature_dir, result_dir, model_config, parameter_config):
     """
     Run predictive models configured by the user and save results to the disk
@@ -415,7 +424,6 @@ def run(feature_dir, result_dir, model_config, parameter_config):
     -------
     None
     """
-
     model_configs = load_yaml(model_config)
 
     features = model_configs.get('features')
@@ -435,5 +443,4 @@ def run(feature_dir, result_dir, model_config, parameter_config):
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
                                            ref_groups=model_configs.get('ref_groups'), out_dir=result_dir, hdf=hdf_result)
-
 

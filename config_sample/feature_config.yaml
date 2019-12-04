@@ -1,0 +1,35 @@
+institutional:
+  - age
+  - isfemale
+
+click:
+  - total_clicks
+  - total_clicks_first_two_wks
+  - total_clicks_by_category
+
+survey:
+  - effort_regulation
+  - time_management
+
+label:
+  scope:
+    - cur_course
+    - next_year
+  threshold:
+    - median
+
+protected:
+  - ethnicity
+  - gender
+
+url_cats:
+  portal:
+    - homepage
+  tasks:
+    - quizzes
+  content:
+    - modules
+  communication:
+    - discussion_topics
+  performance:
+    - grades

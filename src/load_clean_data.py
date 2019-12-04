@@ -123,7 +123,6 @@ def clean_student_table(course_name, course_id, student_table, col_dict):
         if 'course_total' in cleaned_student_table.columns:
             grade_to_fill = (cleaned_student_table['course_total'].notnull()) & (cleaned_student_table[
                                                                                       'grade'].isnull())
-
             cleaned_student_table['grade'] = np.where(grade_to_fill, cleaned_student_table['course_total'].apply(
                 convert_score_to_letter), cleaned_student_table['grade'])
 
@@ -345,7 +344,6 @@ def run(raw_data_dir, semantic_dir, data_config):
     Returns
     -------
     None
-
     """
 
     config = load_yaml(data_config)
@@ -369,3 +367,4 @@ def run(raw_data_dir, semantic_dir, data_config):
         load_student_info(course_dir_list, semantic_dir, config['col_dict'], hdf=hdf_semantic) # Student-level tables
         load_clickstream(course_dir_list, semantic_dir, hdf=hdf_semantic)  # Clickstream data
         load_enrollment(enrollment_data, semantic_dir, hdf=hdf_semantic)  # Course enrollment data
+
