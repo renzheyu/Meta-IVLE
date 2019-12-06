@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+import pickle
 from functools import reduce
 from itertools import product
 from src.utils import *
@@ -150,7 +151,7 @@ def get_labels(master_table, label_name, label_group='labels', to_numpy=False):
         label_table = label_table.to_numpy()
     return label_table
 
-def get_tuned_model(model_name, X, y, groups, params=None):
+def get_tuned_model(model_name, X, y, groups, params=None, param_grid=None, tune=False):
     """
     Configure a classifier instance given the input model name
     Currently no hyperparameter tuning but can accommodate in future versions
@@ -168,6 +169,9 @@ def get_tuned_model(model_name, X, y, groups, params=None):
     params : dict or None
         If not None, a dictionary of parameters for the specified classifier, in the form of {param_name: param_value}
 
+    param_grid: dict or None
+        If not None, a dictionary of parameters for the specified classifier that will be used for GridSearch
+
     Returns
     -------
     clf : Scikit-learn estimator
@@ -182,19 +186,22 @@ def get_tuned_model(model_name, X, y, groups, params=None):
         'random_forest': RandomForestClassifier()
     }
     clf = clf_dict[model_name]
-#     logo = LeaveOneGroupOut()
-#
-#     if params is not None:
-#        clf_tuned = GridSearchCV(clf, params, cv=logo)
-#        clf_tuned.fit(x_imputed, y, groups=groups)
-#        best_params = clf_tuned.best_params_
-#        print(best_params)
-#        clf.set_params(**best_params)
 
-    clf.set_params(**params)
+    if tune and param_grid is not None:
+       logo = LeaveOneGroupOut()
+       clf_tuned = GridSearchCV(clf, params, cv=logo)
+       clf_tuned.fit(x_imputed, y, groups=groups)
+       best_params = clf_tuned.best_params_
+       print(best_params)
+       clf.set_params(**best_params)
+       return clf, best_params
+
+    if params is not None:
+        clf.set_params(**params)
+
     return clf
 
-def get_pred_res(master_table, features, labels, models, group_var, rseed, out_dir, hdf, to_csv=True):
+def get_pred_res(master_table, features, labels, models, parameter_configs, group_var, out_dir, hdf, tune_models=False, to_csv=True):
     """
     Configure all requested prediction models (as combinations of different features, labels and models),
     run the models using group(course)-level ross validation and save raw predictions
@@ -215,11 +222,11 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
     models : list
         List of classifier names
 
+    parameter_configs: dict
+        A dictionary of the parameters used for hyperparameter tuning
+
     group_var : str
         Variable name to group samples for cross validation. Currently must be in the index of master_table
-
-    rseed : int
-        Pseudo-random number
 
     out_dir : str
         Directory to save the resulting table
@@ -242,29 +249,41 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
     model_info = pd.DataFrame([], columns=['model_id', 'feature', 'label', 'model'])
     unique_id = master_table.index.to_frame().reset_index(drop=True)
     pred_res = pd.DataFrame([], columns=unique_id.columns.tolist()+['model_id', 'y_true', 'y_pred'])
-    model_id = 1 #DELETE LATER
+    model_hyperparameters = dict()
+
+    with open('./hyperparameters.pickle', 'rb') as f:
+        tuned_hyperparameters = pickle.load(f)
+
     for (feature, label) in product(features, labels):
         X = get_features(master_table, feature).to_numpy()
         y = get_labels(master_table, label).to_numpy()
         groups = master_table.index.get_level_values(group_var)
         for model in models:
-            #parameters = parameter_configs.get(model)
-            print(model_id)
-            parameters = parameter_configs.get(model_id)
+            model_id = len(model_info) + 1
             print(f'Predicting {label} using {feature} via {model}...')
-            clf = get_tuned_model(model, X, y, groups, params=parameters)
+
+            if tune_models:
+                param_grid = parameter_configs.get(model)
+                clf, best_params = get_tuned_model(model, X, y, groups, param_grid=param_grid, tune=True)
+                model_hyperparameters[model_id] = best_params
+            else:
+                parameters = tuned_hyperparameters[model_id]
+                clf = get_tuned_model(model, X, y, groups, params=parameters)
+
             logo = LeaveOneGroupOut()
             estimator = make_pipeline(make_union(SimpleImputer(strategy='constant', fill_value=0), MissingIndicator(
                 features='all')), clf)
             predicted = cross_val_predict(estimator, X, y, groups=groups, cv=logo)
-            model_id = len(model_info) + 1
+
             model_info = model_info.append({'model_id': model_id, 'feature': feature, 'label': label, 'model': model},
                               ignore_index=True)
             res = pd.DataFrame({'model_id': model_id, 'y_true': y, 'y_pred': predicted})
             pred_res = pred_res.append(pd.concat([unique_id, res], axis=1))
 
-            model_id += 1 #DELETE LATER
-
+    if tune_models:
+        with open('hyperparameters.pickle', 'wb') as handle:
+            pickle.dump(model_hyperparameters, handle)
+        print("Tuned hyperparameters saved to pickle file")
 
     hdf.put('model_info', model_info)
     print('Model info saved to HDFStore')
@@ -424,6 +443,7 @@ def run(feature_dir, result_dir, model_config, parameter_config):
     -------
     None
     """
+
     model_configs = load_yaml(model_config)
 
     features = model_configs.get('features')
@@ -438,9 +458,7 @@ def run(feature_dir, result_dir, model_config, parameter_config):
             master_table = create_master_table(hdf_in=hdf_feature, hdf_out=hdf_result, out_dir=result_dir,
                                                max_var_miss=model_configs.get('max_var_miss'), label_table_names=['labels'],
                                                standardize=True, by=['course_id'])
-            model_info, pred_res = get_pred_res(master_table, features, labels, models, parameter_configs, 'course_id', rseed=model_configs.get(
-                'random_seed'), out_dir=result_dir, hdf=hdf_result)
+            model_info, pred_res = get_pred_res(master_table, features, labels, models, parameter_configs, 'course_id', out_dir=result_dir, hdf=hdf_result)
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
                                            ref_groups=model_configs.get('ref_groups'), out_dir=result_dir, hdf=hdf_result)
-
