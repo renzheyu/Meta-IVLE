@@ -253,7 +253,7 @@ def get_pred_res(master_table, features, labels, models, parameter_configs, grou
 
     if tune_models == False:
         with open('./hyperparameters.pickle', 'rb') as f:
-            tuned_hyperparameters = pickle.load(f)git
+            tuned_hyperparameters = pickle.load(f)g
 
     for (feature, label) in product(features, labels):
         X = get_features(master_table, feature).to_numpy()
