@@ -1,0 +1,13 @@
+feature_order:
+  - institutional
+  - institutional+click+survey
+
+label_order:
+  - cur_course_over_median
+
+neglected_groups:
+  ethnicity:
+    - 'Unknown / declined to state'
+
+small_group_threshold: 0.01
+sig_level: 0.1
