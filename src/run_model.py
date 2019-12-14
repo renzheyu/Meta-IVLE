@@ -180,6 +180,9 @@ def get_tuned_model(model_name, X, y, groups, params=None, param_grid=None, tune
     imputer = Imputer()
     x_imputed = imputer.fit_transform(X)
 
+    indicator = MissingIndicator(features='all')
+    x = indicator.fit_transform(x_imputed)
+
     clf_dict = {
         'logistic_regression': LogisticRegression(),
         'svm': SVC(),
@@ -189,19 +192,19 @@ def get_tuned_model(model_name, X, y, groups, params=None, param_grid=None, tune
 
     if tune and param_grid is not None:
        logo = LeaveOneGroupOut()
-       clf_tuned = GridSearchCV(clf, params, cv=logo)
-       clf_tuned.fit(x_imputed, y, groups=groups)
+       clf_tuned = GridSearchCV(clf, param_grid, cv=logo)
+       clf_tuned.fit(x, y, groups=groups)
        best_params = clf_tuned.best_params_
        print(best_params)
-       clf.set_params(**best_params)
-       return clf, best_params
+       predicted = clf_tuned.predict(x)
+       return predicted, best_params
 
     if params is not None:
         clf.set_params(**params)
 
     return clf
 
-def get_pred_res(master_table, features, labels, models, parameter_configs, group_var, out_dir, hdf, tune_models=False, to_csv=True):
+def get_pred_res(master_table, features, labels, models, model_configs, group_var, out_dir, hdf, tune_models=False, to_csv=True):
     """
     Configure all requested prediction models (as combinations of different features, labels and models),
     run the models using group(course)-level ross validation and save raw predictions
@@ -222,8 +225,8 @@ def get_pred_res(master_table, features, labels, models, parameter_configs, grou
     models : list
         List of classifier names
 
-    parameter_configs: dict
-        A dictionary of the parameters used for hyperparameter tuning
+    model_configs: yaml
+        Config file for models
 
     group_var : str
         Variable name to group samples for cross validation. Currently must be in the index of master_table
@@ -264,17 +267,16 @@ def get_pred_res(master_table, features, labels, models, parameter_configs, grou
             print(f'Predicting {label} using {feature} via {model}...')
 
             if tune_models:
-                param_grid = parameter_configs.get(model)
-                clf, best_params = get_tuned_model(model, X, y, groups, param_grid=param_grid, tune=True)
+                param_grid = model_configs.get(model)
+                predicted, best_params = get_tuned_model(model, X, y, groups, param_grid=param_grid, tune=True)
                 model_hyperparameters[model_id] = best_params
             else:
                 parameters = tuned_hyperparameters[model_id]
                 clf = get_tuned_model(model, X, y, groups, params=parameters)
-
-            logo = LeaveOneGroupOut()
-            estimator = make_pipeline(make_union(SimpleImputer(strategy='constant', fill_value=0), MissingIndicator(
-                features='all')), clf)
-            predicted = cross_val_predict(estimator, X, y, groups=groups, cv=logo)
+                logo = LeaveOneGroupOut()
+                estimator = make_pipeline(make_union(SimpleImputer(strategy='constant', fill_value=0), MissingIndicator(
+                    features='all')), clf)
+                predicted = cross_val_predict(estimator, X, y, groups=groups, cv=logo)
 
             model_info = model_info.append({'model_id': model_id, 'feature': feature, 'label': label, 'model': model},
                               ignore_index=True)
@@ -406,7 +408,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, to_csv=T
         b = Bias()
         xtab, _ = g.get_crosstabs(df)
         bdf = b.get_disparity_predefined_groups(xtab, original_df=df, ref_groups_dict=ref_groups,
-                                                check_significance=None, mask_significance=False)
+                                                check_significance=True, mask_significance=False)
         return bdf
 
     id_cols = protected_attrs.index.to_frame().columns
@@ -422,7 +424,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, to_csv=T
         print(f'Prediction bias analysis saved to {csv_path}')
 
 
-def run(feature_dir, result_dir, model_config, parameter_config):
+def run(feature_dir, result_dir, model_config):
     """
     Run predictive models configured by the user and save results to the disk
 
@@ -437,9 +439,6 @@ def run(feature_dir, result_dir, model_config, parameter_config):
     model_config : str
         Name of model configuration file, with full path
 
-    parameter_config : str
-        Name of parameter configuration file, with full path
-
     Returns
     -------
     None
@@ -452,14 +451,12 @@ def run(feature_dir, result_dir, model_config, parameter_config):
     models = model_configs.get('models')
     metrics = model_configs.get('metrics')
 
-    parameter_configs = load_yaml(parameter_config)
-
     with pd.HDFStore(os.path.join(feature_dir, 'feature.h5')) as hdf_feature:
         with pd.HDFStore(os.path.join(result_dir, 'result.h5')) as hdf_result:
             master_table = create_master_table(hdf_in=hdf_feature, hdf_out=hdf_result, out_dir=result_dir,
                                                max_var_miss=model_configs.get('max_var_miss'), label_table_names=['labels'],
                                                standardize=True, by=['course_id'])
-            model_info, pred_res = get_pred_res(master_table, features, labels, models, parameter_configs, 'course_id', out_dir=result_dir, hdf=hdf_result)
+            model_info, pred_res = get_pred_res(master_table, features, labels, models, model_configs, 'course_id', out_dir=result_dir, hdf=hdf_result, tune_models=False)
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
                                            ref_groups=model_configs.get('ref_groups'), out_dir=result_dir, hdf=hdf_result)
