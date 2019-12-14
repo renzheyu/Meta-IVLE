@@ -311,5 +311,6 @@ def categorize_table(df):
     """
     df_cat = df.copy()
     for col in df_cat.select_dtypes(include=object).columns:
-        df_cat[col] = df[col].astype('category', categories=df_cat[col].unique(), ordered=True)
+        cat_type = pd.CategoricalDtype(categories=df_cat[col].unique(), ordered=True)
+        df_cat[col] = df[col].astype(cat_type)
     return df_cat

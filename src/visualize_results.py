@@ -213,7 +213,7 @@ def heatmap_pred_bias(pred_bias_mat, out_dir, sig_level=0.1):
         ax.add_collection(c)
         return c
 
-    fig, ax = plt.subplots(1, 1, figsize=(40, 15))
+    fig, ax = plt.subplots(1, 1, figsize=(40, 25))
     im = ax.matshow(pred_bias_mat['disparity'], cmap='Blues')
     cbar = plt.colorbar(im, shrink=0.4)
     cbar.ax.tick_params(labelsize=22)
