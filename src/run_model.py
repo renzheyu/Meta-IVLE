@@ -13,6 +13,7 @@ from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict, GridSea
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
+from statsmodels.stats.proportion import proportions_ztest
 
 from aequitas.group import Group
 from aequitas.bias import Bias
@@ -185,7 +186,7 @@ def get_tuned_model(model_name, X, y, groups, params=None, param_grid=None, tune
 
     clf_dict = {
         'logistic_regression': LogisticRegression(),
-        'svm': SVC(),
+        'svm': SVC(probability=True),
         'random_forest': RandomForestClassifier()
     }
     clf = clf_dict[model_name]
@@ -197,7 +198,8 @@ def get_tuned_model(model_name, X, y, groups, params=None, param_grid=None, tune
        best_params = clf_tuned.best_params_
        print(best_params)
        predicted = clf_tuned.predict(x)
-       return predicted, best_params
+       predicted_proba = clf_tuned.predict_proba(x)[:,1]
+       return predicted, predicted_proba, best_params
 
     if params is not None:
         clf.set_params(**params)
@@ -252,11 +254,12 @@ def get_pred_res(master_table, features, labels, models, model_configs, group_va
     model_info = pd.DataFrame([], columns=['model_id', 'feature', 'label', 'model'])
     unique_id = master_table.index.to_frame().reset_index(drop=True)
     pred_res = pd.DataFrame([], columns=unique_id.columns.tolist()+['model_id', 'y_true', 'y_pred'])
-    model_hyperparameters = dict()
 
-    if tune_models == False:
+    if not tune_models:
         with open('./hyperparameters.pickle', 'rb') as f:
-            tuned_hyperparameters = pickle.load(f)
+            hyperparams = pickle.load(f)
+    else:
+        hyperparams = dict()
 
     for (feature, label) in product(features, labels):
         X = get_features(master_table, feature).to_numpy()
@@ -268,24 +271,25 @@ def get_pred_res(master_table, features, labels, models, model_configs, group_va
 
             if tune_models:
                 param_grid = model_configs.get(model)
-                predicted, best_params = get_tuned_model(model, X, y, groups, param_grid=param_grid, tune=True)
-                model_hyperparameters[model_id] = best_params
+                predicted, predicted_proba, best_params = get_tuned_model(model, X, y, groups, param_grid=param_grid, tune=True)
+                hyperparams[model_id] = best_params
             else:
-                parameters = tuned_hyperparameters[model_id]
+                parameters = hyperparams[model_id]
                 clf = get_tuned_model(model, X, y, groups, params=parameters)
                 logo = LeaveOneGroupOut()
                 estimator = make_pipeline(make_union(SimpleImputer(strategy='constant', fill_value=0), MissingIndicator(
                     features='all')), clf)
                 predicted = cross_val_predict(estimator, X, y, groups=groups, cv=logo)
+                predicted_proba = cross_val_predict(estimator, X, y, groups=groups, cv=logo, method="predict_proba")[:,1]
 
             model_info = model_info.append({'model_id': model_id, 'feature': feature, 'label': label, 'model': model},
                               ignore_index=True)
-            res = pd.DataFrame({'model_id': model_id, 'y_true': y, 'y_pred': predicted})
+            res = pd.DataFrame({'model_id': model_id, 'y_true': y, 'y_pred': predicted, 'upper_level_score': predicted_proba})
             pred_res = pred_res.append(pd.concat([unique_id, res], axis=1))
 
     if tune_models:
         with open('hyperparameters.pickle', 'wb') as handle:
-            pickle.dump(model_hyperparameters, handle)
+            pickle.dump(hyperparams, handle)
         print("Tuned hyperparameters saved to pickle file")
 
     hdf.put('model_info', model_info)
@@ -368,7 +372,110 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True
         print(f'Prediction scores saved to {csv_path}')
 
 
-def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, to_csv=True):
+def compute_bias(df, ref_groups, metrics):
+    """
+    Compute the bias of a model
+
+    Parameters
+    ----------
+    df : Pandas DataFrame
+        Raw prediction results concatenated with protected attribute information
+        Ex:
+            entity_id | model_id | y_true | y_pred | ethnicity | hs_GPA
+
+    metrics : list
+        List of metrics to be calculated
+
+    ref_groups : dict
+        Identifies the reference group for each protected attribute
+
+    Results
+    -------
+    bias : Pandas DataFrame
+        Bias measures against different groups for a single model
+        Format:
+            attribute_name | attribute_value | bias1_disparity | bias1_significance | ...
+     """
+
+    columns = []
+    for metric in metrics:
+        columns.append(metric)
+        columns.append(metric + "_disparity")
+        columns.append(metric + "_significance")
+
+    total_n = len(df)
+    bdf = pd.DataFrame([], columns=['attribute_name', 'attribute_value', 'total_n', 'group_n', 'label_pos', 'label_neg', 'pp', 'pn', 'fp', 'fn', 'tn', 'tp', 'ref_group_value'] + columns)
+    for att in ref_groups:
+        attribute_name = att
+        df_att = df.groupby(att)
+        groups = list(df[att].unique())
+        ref_group = ref_groups[att]
+        groups = [ i for i in groups if str(i) != 'nan' and i != ref_group]
+        df_ref = df_att.get_group(ref_group)
+
+        fp_ref = len(df_ref.query('label_value == 0 and score == 1'))
+        fn_ref = len(df_ref.query('label_value == 1 and score == 0'))
+        tn_ref = len(df_ref.query('label_value == 0 and score == 0'))
+        tp_ref = len(df_ref.query('label_value == 1 and score == 1'))
+
+        for metric in metrics:
+            if metric == 'acc':
+                ref_acc = (tp_ref + tn_ref)/(tp_ref + tn_ref + fp_ref + fn_ref)
+            elif metric == 'fnr':
+                ref_fnr = fn_ref/(fn_ref + tp_ref)
+            elif metric == 'fpr':
+                ref_fpr = fp_ref/(fp_ref + tn_ref)
+
+        for group in groups:
+            attribute_value = group
+            df_group = df_att.get_group(group)
+            group_n = len(df_group)
+            label_pos = len(df_group[df_group['label_value'] == 1])
+            label_neg = group_n - label_pos
+            pp = len(df_group[df_group['score'] == 1])
+            pn = group_n - pp
+            fp = len(df_group.query('label_value == 0 and score == 1'))
+            fn = len(df_group.query('label_value == 1 and score == 0'))
+            tn = len(df_group.query('label_value == 0 and score == 0'))
+            tp = len(df_group.query('label_value == 1 and score == 1'))
+
+            metric_dict = dict()
+            for metric in metrics:
+                if metric == 'acc':
+                    value = (tp + tn)/(fp + fn + tn + tp)
+                    disparity = value/ref_acc if ref_acc != 0 else value/10
+                    count = [tp + tn, tp_ref + tn_ref]
+                    nobs = [fp + fn + tn + tp, tp_ref + tn_ref + fp_ref + fn_ref]
+                    stat, pval = proportions_ztest(count, nobs, alternative='smaller')
+                elif metric == 'fnr':
+                    value = fn/(fn + tp) if fn != 0 else 0
+                    disparity = value/ref_fnr if ref_fnr != 0 else value/10
+                    count = [fn, fn_ref]
+                    nobs = [fn + tp, fn_ref + tp_ref]
+                    stat, pval = proportions_ztest(count, nobs, alternative='larger')
+                elif metric == 'fpr':
+                    value = fp/(fp + tn) if fp != 0 else 0
+                    disparity = value/ref_fpr if ref_fpr != 0 else value/10
+                    count = [fp, fp_ref]
+                    nobs = [fp + tn, fp_ref + tn_ref]
+                    stat, pval = proportions_ztest(count, nobs, alternative='larger')
+
+                metric_dict[metric] = value
+                metric_dict[metric + "_disparity"] = disparity
+                metric_dict[metric + "_significance"] = pval
+
+            row = {'attribute_name': attribute_name, 'attribute_value': attribute_value, 'total_n': total_n, 'group_n': group_n,
+            'label_pos': label_pos, 'label_neg': label_neg, 'pp': pp, 'pn': pn, 'fp': fp, 'fn': fn, 'tn': tn, 'tp': tp, 'ref_group_value': ref_group}
+
+            row.update(metric_dict)
+            row = pd.DataFrame([row])
+
+            bdf = bdf.append(row, ignore_index=True, sort=False)
+
+    return bdf
+
+
+def audit_fairness(pred_res, protected_attrs, ref_groups, metrics, out_dir, hdf, to_csv=True):
     """
     Evaluate the fairness of raw prediction results
 
@@ -399,22 +506,21 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, out_dir, hdf, to_csv=T
     Results
     -------
     bias : Pandas DataFrame
-        Bias measures against different groups as calculated by aequitas.bias
+        Bias measures against different groups
         Format:
             model_id | attribute_name | attribute_value | bias1_disparity | bias1_significance | ...
     """
-    def compute_bias(df, ref_groups):
-        g = Group()
-        b = Bias()
-        xtab, _ = g.get_crosstabs(df)
-        bdf = b.get_disparity_predefined_groups(xtab, original_df=df, ref_groups_dict=ref_groups,
-                                                check_significance=True, mask_significance=False)
-        return bdf
-
     id_cols = protected_attrs.index.to_frame().columns
     df = pred_res.merge(protected_attrs.reset_index()).drop(id_cols, axis=1).rename(columns={'y_pred': 'score',
                                                                                              'y_true': 'label_value'})
-    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups).reset_index(drop=True)
+
+    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups, metrics=metrics).reset_index(drop=True)
+    model_ids = []
+    for i in list([i] * 13 for i in range(1,43)):
+        model_ids += i
+
+    model_id = pd.Series(model_ids)
+    bias['model_id'] = model_id
 
     hdf.put('pred_bias', bias)
     print('Prediction bias analysis saved to HDFStore')
@@ -459,4 +565,5 @@ def run(feature_dir, result_dir, model_config):
             model_info, pred_res = get_pred_res(master_table, features, labels, models, model_configs, 'course_id', out_dir=result_dir, hdf=hdf_result, tune_models=False)
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
-                                           ref_groups=model_configs.get('ref_groups'), out_dir=result_dir, hdf=hdf_result)
+                                           ref_groups=model_configs.get('ref_groups'), metrics=metrics, out_dir=result_dir, hdf=hdf_result)
+
