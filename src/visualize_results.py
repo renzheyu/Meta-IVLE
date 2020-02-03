@@ -120,8 +120,8 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
                 f2
     """
     group_cols = ['model_id', 'attribute_name', 'attribute_value']
-    f_ref_group = (pred_bias['attribute_value'] == pred_bias['fdr_ref_group_value'])
-    f_small_group = (pred_bias['group_size'] <= pred_bias['total_entities'] * small_group_threshold)
+    f_ref_group = (pred_bias['attribute_value'] == pred_bias['ref_group_value'])
+    f_small_group = (pred_bias['group_n'] <= pred_bias['total_n'] * small_group_threshold)
     if neglected_groups is not None:
         f_neglected_group = pred_bias.apply(lambda x: (x['attribute_value'] == neglected_groups.get(x['attribute_name'])),
                                             axis=1)

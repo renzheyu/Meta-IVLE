@@ -193,12 +193,12 @@ def get_cat_from_url(url, cat_dict=None):
     else:
         cat = re.sub(r'\d+/', '', str_match[0])
     if cat_dict is not None:
-        cat = 'misc'
+        cat_macro = 'misc'
         for k in cat_dict:
             if cat in cat_dict[k]:
-                cat = k
+                cat_macro = k
                 break
-    return cat
+    return cat_macro
 
 def get_next_terms(acadyr, acadterm, N_TERMS=4):
     """
