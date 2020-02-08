@@ -410,7 +410,7 @@ def compute_bias(df, ref_groups, metrics):
         df_att = df.groupby(att)
         groups = list(df[att].unique())
         ref_group = ref_groups[att]
-        groups = [ i for i in groups if str(i) != 'nan' and i != ref_group]
+        groups = [ i for i in groups if str(i) != 'nan']
         df_ref = df_att.get_group(ref_group)
 
         fp_ref = len(df_ref.query('label_value == 0 and score == 1'))
