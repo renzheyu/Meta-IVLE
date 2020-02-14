@@ -206,7 +206,7 @@ def get_tuned_model(model_name, X, y, groups, params=None, param_grid=None, tune
 
     return clf
 
-def get_pred_res(master_table, features, labels, models, model_configs, group_var, out_dir, hdf, tune_models=False, to_csv=True):
+def get_pred_res(master_table, features, labels, models, group_var, out_dir, hdf, tune_models=False, to_csv=True):
     """
     Configure all requested prediction models (as combinations of different features, labels and models),
     run the models using group(course)-level ross validation and save raw predictions
@@ -224,11 +224,8 @@ def get_pred_res(master_table, features, labels, models, model_configs, group_va
     labels : list
         List of label names, as columns in master_table
 
-    models : list
-        List of classifier names
-
-    model_configs: yaml
-        Config file for models
+    models : dict
+        Dictionary of models and their best parameters 
 
     group_var : str
         Variable name to group samples for cross validation. Currently must be in the index of master_table
@@ -270,7 +267,7 @@ def get_pred_res(master_table, features, labels, models, model_configs, group_va
             print(f'Predicting {label} using {feature} via {model}...')
 
             if tune_models:
-                param_grid = model_configs.get('models').get(model)
+                param_grid = models[model]
                 predicted, predicted_proba, best_params = get_tuned_model(model, X, y, groups, param_grid=param_grid, tune=True)
                 hyperparams[model_id] = best_params
             else:
@@ -554,7 +551,7 @@ def run(feature_dir, result_dir, model_config):
 
     features = model_configs.get('features')
     labels = model_configs.get('labels')
-    models = model_configs.get('models').keys()
+    models = model_configs.get('models')
     metrics = model_configs.get('metrics')
 
     with pd.HDFStore(os.path.join(feature_dir, 'feature.h5')) as hdf_feature:
@@ -562,7 +559,7 @@ def run(feature_dir, result_dir, model_config):
             master_table = create_master_table(hdf_in=hdf_feature, hdf_out=hdf_result, out_dir=result_dir,
                                                max_var_miss=model_configs.get('max_var_miss'), label_table_names=['labels'],
                                                standardize=True, by=['course_id'])
-            model_info, pred_res = get_pred_res(master_table, features, labels, models, model_configs, 'course_id', out_dir=result_dir, hdf=hdf_result, tune_models=False)
+            model_info, pred_res = get_pred_res(master_table, features, labels, models, 'course_id', out_dir=result_dir, hdf=hdf_result, tune_models=False)
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
                                            ref_groups=model_configs.get('ref_groups'), metrics=metrics, out_dir=result_dir, hdf=hdf_result)
