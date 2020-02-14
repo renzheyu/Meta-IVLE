@@ -270,7 +270,7 @@ def get_pred_res(master_table, features, labels, models, model_configs, group_va
             print(f'Predicting {label} using {feature} via {model}...')
 
             if tune_models:
-                param_grid = model_configs.get(model)
+                param_grid = model_configs.get('models').get(model)
                 predicted, predicted_proba, best_params = get_tuned_model(model, X, y, groups, param_grid=param_grid, tune=True)
                 hyperparams[model_id] = best_params
             else:
@@ -554,7 +554,7 @@ def run(feature_dir, result_dir, model_config):
 
     features = model_configs.get('features')
     labels = model_configs.get('labels')
-    models = model_configs.get('models')
+    models = model_configs.get('models').keys()
     metrics = model_configs.get('metrics')
 
     with pd.HDFStore(os.path.join(feature_dir, 'feature.h5')) as hdf_feature:
