@@ -152,7 +152,7 @@ def get_labels(master_table, label_name, label_group='labels', to_numpy=False):
         label_table = label_table.to_numpy()
     return label_table
 
-def get_tuned_model(model_name, X, y, groups, params=None, param_grid=None, tune=False):
+def get_tuned_model(model_name, X, y, groups, rseed, params=None, param_grid=None, tune=False):
     """
     Configure a classifier instance given the input model name
     Currently no hyperparameter tuning but can accommodate in future versions
@@ -178,20 +178,19 @@ def get_tuned_model(model_name, X, y, groups, params=None, param_grid=None, tune
     clf : Scikit-learn estimator
         Configured classifier
     """
-    imputer = Imputer()
-    x_imputed = imputer.fit_transform(X)
-
-    indicator = MissingIndicator(features='all')
-    x = indicator.fit_transform(x_imputed)
-
     clf_dict = {
-        'logistic_regression': LogisticRegression(),
-        'svm': SVC(probability=True),
-        'random_forest': RandomForestClassifier()
+        'logistic_regression': LogisticRegression(random_state=rseed),
+        'svm': SVC(probability=True, random_state=rseed),
+        'random_forest': RandomForestClassifier(random_state=rseed)
     }
     clf = clf_dict[model_name]
 
     if tune and param_grid is not None:
+       imputer = Imputer()
+       x_imputed = imputer.fit_transform(X)
+       indicator = MissingIndicator(features='all')
+       x = indicator.fit_transform(x_imputed)
+
        logo = LeaveOneGroupOut()
        clf_tuned = GridSearchCV(clf, param_grid, cv=logo)
        clf_tuned.fit(x, y, groups=groups)
@@ -206,7 +205,7 @@ def get_tuned_model(model_name, X, y, groups, params=None, param_grid=None, tune
 
     return clf
 
-def get_pred_res(master_table, features, labels, models, group_var, out_dir, hdf, tune_models=False, to_csv=True):
+def get_pred_res(master_table, features, labels, models, group_var, rseed, out_dir, hdf, tune_models=False, to_csv=True):
     """
     Configure all requested prediction models (as combinations of different features, labels and models),
     run the models using group(course)-level ross validation and save raw predictions
@@ -225,10 +224,13 @@ def get_pred_res(master_table, features, labels, models, group_var, out_dir, hdf
         List of label names, as columns in master_table
 
     models : dict
-        Dictionary of models and their best parameters 
+        Dictionary of models and their best parameters
 
     group_var : str
         Variable name to group samples for cross validation. Currently must be in the index of master_table
+
+    rseed : int
+            Pseudo-random number
 
     out_dir : str
         Directory to save the resulting table
@@ -268,11 +270,11 @@ def get_pred_res(master_table, features, labels, models, group_var, out_dir, hdf
 
             if tune_models:
                 param_grid = models[model]
-                predicted, predicted_proba, best_params = get_tuned_model(model, X, y, groups, param_grid=param_grid, tune=True)
+                predicted, predicted_proba, best_params = get_tuned_model(model, X, y, groups, rseed, param_grid=param_grid, tune=True)
                 hyperparams[model_id] = best_params
             else:
                 parameters = hyperparams[model_id]
-                clf = get_tuned_model(model, X, y, groups, params=parameters)
+                clf = get_tuned_model(model, X, y, groups, rseed, params=parameters)
                 logo = LeaveOneGroupOut()
                 estimator = make_pipeline(make_union(SimpleImputer(strategy='constant', fill_value=0), MissingIndicator(
                     features='all')), clf)
@@ -559,7 +561,8 @@ def run(feature_dir, result_dir, model_config):
             master_table = create_master_table(hdf_in=hdf_feature, hdf_out=hdf_result, out_dir=result_dir,
                                                max_var_miss=model_configs.get('max_var_miss'), label_table_names=['labels'],
                                                standardize=True, by=['course_id'])
-            model_info, pred_res = get_pred_res(master_table, features, labels, models, 'course_id', out_dir=result_dir, hdf=hdf_result, tune_models=False)
+            model_info, pred_res = get_pred_res(master_table, features, labels, models, 'course_id', rseed=model_configs.get('random_seed'),
+            out_dir=result_dir, hdf=hdf_result, tune_models=False)
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
                                            ref_groups=model_configs.get('ref_groups'), metrics=metrics, out_dir=result_dir, hdf=hdf_result)
