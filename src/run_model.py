@@ -442,19 +442,19 @@ def compute_bias(df, ref_groups, metrics):
             for metric in metrics:
                 if metric == 'acc':
                     value = (tp + tn)/(fp + fn + tn + tp)
-                    disparity = value/ref_acc if ref_acc != 0 else value/10
+                    disparity = min(ref_acc/(value + 0.00001), 10)
                     count = [tp + tn, tp_ref + tn_ref]
                     nobs = [fp + fn + tn + tp, tp_ref + tn_ref + fp_ref + fn_ref]
                     stat, pval = proportions_ztest(count, nobs, alternative='smaller')
                 elif metric == 'fnr':
-                    value = fn/(fn + tp) if fn != 0 else 0
-                    disparity = value/ref_fnr if ref_fnr != 0 else value/10
+                    value = fn/(fn + tp) if (fn + tp) != 0 else np.nan
+                    disparity = min(value/(ref_fnr + 0.00001),10)
                     count = [fn, fn_ref]
                     nobs = [fn + tp, fn_ref + tp_ref]
                     stat, pval = proportions_ztest(count, nobs, alternative='larger')
                 elif metric == 'fpr':
-                    value = fp/(fp + tn) if fp != 0 else 0
-                    disparity = value/ref_fpr if ref_fpr != 0 else value/10
+                    value = fp/(fp + tn) if (fp + tn) != 0 else np.nan
+                    disparity = min(value/(ref_fpr + 0.00001), 10)
                     count = [fp, fp_ref]
                     nobs = [fp + tn, fp_ref + tn_ref]
                     stat, pval = proportions_ztest(count, nobs, alternative='larger')
