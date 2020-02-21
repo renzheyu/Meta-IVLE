@@ -205,7 +205,7 @@ def get_tuned_model(model_name, X, y, groups, rseed, params=None, param_grid=Non
 
     return clf
 
-def get_pred_res(master_table, features, labels, models, group_var, rseed, out_dir, hdf, tune_models=False, to_csv=True):
+def get_pred_res(master_table, features, labels, models, group_var, rseed, out_dir, hdf, best_params_file_path=None, tune_models=False, to_csv=True):
     """
     Configure all requested prediction models (as combinations of different features, labels and models),
     run the models using group(course)-level ross validation and save raw predictions
@@ -238,6 +238,9 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
 
+    best_params_file_path: str
+        File path to file containing best model hyperparameters
+
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
@@ -255,7 +258,7 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
     pred_res = pd.DataFrame([], columns=unique_id.columns.tolist()+['model_id', 'y_true', 'y_pred'])
 
     if not tune_models:
-        with open('./hyperparameters.pickle', 'rb') as f:
+        with open(best_params_file_path', 'rb') as f:
             hyperparams = pickle.load(f)
     else:
         hyperparams = dict()
@@ -287,7 +290,7 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
             pred_res = pred_res.append(pd.concat([unique_id, res], axis=1))
 
     if tune_models:
-        with open('hyperparameters.pickle', 'wb') as handle:
+        with open(best_params_file_path, 'wb') as handle:
             pickle.dump(hyperparams, handle)
         print("Tuned hyperparameters saved to pickle file")
 
@@ -555,6 +558,7 @@ def run(feature_dir, result_dir, model_config):
     labels = model_configs.get('labels')
     models = model_configs.get('models')
     metrics = model_configs.get('metrics')
+    best_params_file_path = model_configs.get('best_params_file_path')
 
     with pd.HDFStore(os.path.join(feature_dir, 'feature.h5')) as hdf_feature:
         with pd.HDFStore(os.path.join(result_dir, 'result.h5')) as hdf_result:
@@ -562,7 +566,7 @@ def run(feature_dir, result_dir, model_config):
                                                max_var_miss=model_configs.get('max_var_miss'), label_table_names=['labels'],
                                                standardize=True, by=['course_id'])
             model_info, pred_res = get_pred_res(master_table, features, labels, models, 'course_id', rseed=model_configs.get('random_seed'),
-            out_dir=result_dir, hdf=hdf_result, tune_models=False)
+            out_dir=result_dir, hdf=hdf_result, best_params_file_path=best_params_file_path, tune_models=False)
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
                                            ref_groups=model_configs.get('ref_groups'), metrics=metrics, out_dir=result_dir, hdf=hdf_result)
