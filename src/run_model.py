@@ -258,7 +258,7 @@ def get_pred_res(master_table, features, labels, models, group_var, rseed, out_d
     pred_res = pd.DataFrame([], columns=unique_id.columns.tolist()+['model_id', 'y_true', 'y_pred'])
 
     if not tune_models:
-        with open(best_params_file_path', 'rb') as f:
+        with open(best_params_file_path, 'rb') as f:
             hyperparams = pickle.load(f)
     else:
         hyperparams = dict()
