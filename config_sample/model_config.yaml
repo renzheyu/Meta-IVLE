@@ -25,5 +25,3 @@ ref_groups:
 
 random_seed: 1
 max_var_miss: 0.25
-
-best_params_file_path: '/Users/user/hyperparameters.pickle'
