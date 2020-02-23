@@ -9,7 +9,7 @@ from src.utils import *
 mpl.style.use('ggplot')
 
 
-def get_best_pred_score(model_info, pred_score, out_dir, hdf, metrics=None, to_csv=True):
+def get_best_pred_score(model_info, pred_score, out_dir, hdf, metrics=None, to_hdf=True, to_csv=True):
     """
     Get the best result for each combination of feature set and label from raw prediction results
 
@@ -32,6 +32,9 @@ def get_best_pred_score(model_info, pred_score, out_dir, hdf, metrics=None, to_c
 
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
+
+    to_hdf : boolean
+        Whether to save the resulting table in the specified HDFStore object
 
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
@@ -64,8 +67,9 @@ def get_best_pred_score(model_info, pred_score, out_dir, hdf, metrics=None, to_c
     best_pred_score.columns = best_pred_score.columns.str.replace(r'idx(min|max)', 'model_id')
     best_pred_score.columns = best_pred_score.columns.str.replace(r'_(min|max)', '')
 
-    hdf.put('best_pred_score', best_pred_score)
-    print('Best prediction results saved to HDFStore')
+    if to_hdf:
+        hdf.put('best_pred_score', best_pred_score)
+        print('Best prediction results saved to HDFStore')
     if to_csv:
         csv_path = os.path.join(out_dir, 'best_pred_score.csv')
         best_pred_score.to_csv(csv_path, index=False)
@@ -75,7 +79,7 @@ def get_best_pred_score(model_info, pred_score, out_dir, hdf, metrics=None, to_c
 
 
 def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups=None, small_group_threshold=0.01,
-                      to_csv=True):
+                      to_hdf=True, to_csv=True):
     """
     Generate a matrix representation of prediction bias against subpopulations, across different features and labels
 
@@ -103,6 +107,9 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
 
+    to_hdf : boolean
+        Whether to save the resulting table in the specified HDFStore object
+
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
@@ -127,17 +134,17 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
                                             axis=1)
     else:
         f_neglected_group = 0
-    pred_bias = pred_bias[~(f_ref_group | f_small_group | f_neglected_group)]
+    pred_bias_valid = pred_bias[~(f_ref_group | f_small_group | f_neglected_group)]
 
     pred_bias_mat_long = pd.DataFrame([])
     metrics = best_pred_score.columns[best_pred_score.columns.str.contains('_model_id')].str.replace('_model_id', '')
-    bias_metrics = metrics.intersection(pred_bias.columns)
+    bias_metrics = metrics.intersection(pred_bias_valid.columns)
     for bias_metric in bias_metrics:
         model_sub = best_pred_score[['feature', 'label']]
         model_sub['model_id'] = best_pred_score[bias_metric+'_model_id']
-        pred_bias_sub = pred_bias[group_cols]
-        pred_bias_sub['disparity'] = pred_bias[bias_metric+'_disparity']
-        pred_bias_sub['significance'] = pred_bias[bias_metric + '_significance']
+        pred_bias_sub = pred_bias_valid[group_cols]
+        pred_bias_sub['disparity'] = pred_bias_valid[bias_metric+'_disparity']
+        pred_bias_sub['significance'] = pred_bias_valid[bias_metric + '_significance']
         pred_bias_sub['metric'] = bias_metric
         pred_bias_sub = model_sub.merge(pred_bias_sub, how='left')
         pred_bias_mat_long = pred_bias_mat_long.append(pred_bias_sub)
@@ -146,8 +153,9 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
     pred_bias_mat = pd.pivot_table(pred_bias_mat_long, index='feature', values=['disparity', 'significance'],
                                    columns=['label', 'metric', 'attribute_name', 'attribute_value'])
 
-    hdf.put('pred_bias_mat', pred_bias_mat)
-    print('Matrix of prediction bias saved to HDFStore')
+    if to_hdf:
+        hdf.put('pred_bias_mat', pred_bias_mat)
+        print('Matrix of prediction bias saved to HDFStore')
     if to_csv:
         csv_path = os.path.join(out_dir, 'pred_bias_mat.csv')
         pred_bias_mat.to_csv(csv_path, index=True)
