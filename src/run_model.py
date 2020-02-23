@@ -523,10 +523,8 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, metrics, out_dir, hdf,
     df = pred_res.merge(protected_attrs.reset_index()).drop(id_cols, axis=1).rename(columns={'y_pred': 'score',
                                                                                              'y_true': 'label_value'})
 
-    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups, metrics=metrics).reset_index(drop=True)
-    model_ids = []
-    for i in list([i] * 13 for i in range(1,43)):
-        model_ids += i
+    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups, metrics=metrics).reset_index().drop(
+        'level_1', axis=1)
 
     model_id = pd.Series(model_ids)
     bias['model_id'] = model_id
