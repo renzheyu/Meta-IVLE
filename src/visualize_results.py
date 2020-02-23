@@ -273,4 +273,4 @@ def run(result_dir, vis_dir, vis_config):
                                           small_group_threshold=config.get('small_group_threshold'))
 
         barh_pred_score(best_pred_score, out_dir=vis_dir)
-        heatmap_pred_bias(pred_bias_mat, vis_dir)
+        heatmap_pred_bias(pred_bias_mat, vis_dir, sig_level=config.get('sig_level'))
