@@ -25,3 +25,4 @@ ref_groups:
 
 random_seed: 1
 max_var_miss: 0.25
+tune_models: False
