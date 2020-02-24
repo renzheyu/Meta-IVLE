@@ -574,7 +574,8 @@ def run(feature_dir, model_dir, result_dir, model_config):
                                                label_table_names=['labels'], standardize=True, by=['course_id'])
             model_info, pred_res = run_pred_models(master_table, features, labels, models, group_var='course_id',
                                                    rseed=model_configs.get('random_seed'), model_dir=model_dir,
-                                                   result_dir=result_dir, result_hdf=hdf_result, tune_models=False)
+                                                   result_dir=result_dir, result_hdf=hdf_result,
+                                                   tune_models=model_configs.get('tune_models'))
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
                            ref_groups=model_configs.get('ref_groups'), metrics=metrics,
