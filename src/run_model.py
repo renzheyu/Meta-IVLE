@@ -458,7 +458,7 @@ def compute_bias(df, ref_groups, metrics):
                     stat, pval = proportions_ztest(count, nobs, alternative='smaller')
                 elif metric == 'fnr':
                     value = fn/(fn + tp) if (fn + tp) != 0 else np.nan
-                    disparity = min(value/(ref_fnr + 0.00001),10)
+                    disparity = min(value/(ref_fnr + 0.00001), 10)
                     count = [fn, fn_ref]
                     nobs = [fn + tp, fn_ref + tp_ref]
                     stat, pval = proportions_ztest(count, nobs, alternative='larger')
@@ -473,8 +473,17 @@ def compute_bias(df, ref_groups, metrics):
                 metric_dict[metric + "_disparity"] = disparity
                 metric_dict[metric + "_significance"] = pval
 
-            row = {'attribute_name': attribute_name, 'attribute_value': attribute_value, 'total_n': total_n, 'group_n': group_n,
-            'label_pos': label_pos, 'label_neg': label_neg, 'pp': pp, 'pn': pn, 'fp': fp, 'fn': fn, 'tn': tn, 'tp': tp, 'ref_group_value': ref_group}
+            row = {
+                'attribute_name': attribute_name,
+                'attribute_value': attribute_value,
+                'total_n': total_n,
+                'group_n': group_n,
+                'label_pos': label_pos,
+                'label_neg': label_neg,
+                'pp': pp, 'pn': pn,
+                'fp': fp, 'fn': fn, 'tn': tn, 'tp': tp,
+                'ref_group_value': ref_group
+            }
 
             row.update(metric_dict)
             row = pd.DataFrame([row])
