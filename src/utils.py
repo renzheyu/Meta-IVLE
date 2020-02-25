@@ -289,7 +289,7 @@ def get_pred_eval_hits(metric_name, y_true, y_pred):
         hits = np.where(y_true == y_pred, 1, 0)
     elif metric_name == 'fpr':
         hits = np.where(y_true == 0,
-                        np.where(y_pred==1, 1, 0),
+                        np.where(y_pred ==1, 1, 0),
                         np.nan)
     elif metric_name == 'fnr':
         hits = np.where(y_true == 1,
