@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+import re
 from src.utils import *
 
 def create_institutional_features(student_info, feature_list, id_cols, out_dir, hdf, to_csv=True):
@@ -169,10 +170,12 @@ def create_click_features(clickstream, course, feature_list, id_cols, out_dir, h
             ttw.columns = [col[0] + str(col[1]) for col in ttw.columns.values]
             feat_click = feat_click.merge(ttw, how='left')
 
-        if feat == 'total_time_first_two_weeks':
-            tt2w = clicks_srt[clicks_srt['week'].between(1, 2)].groupby(id_cols)['interaction_seconds'].sum() / 3600
-            tt2w = tt2w.reset_index().rename(columns={'interaction_seconds': 'time_first_two_wks'})
-            feat_click = feat_click.merge(tt2w, how='left')
+        if re.match(r'total_time_first_\d+_weeks', feat):
+            week_count = int(re.findall(r'\d+', feat)[0])
+            ttxw = clicks_srt[clicks_srt['week'].between(1, week_count)].groupby(id_cols)['interaction_seconds'].sum(
+              ) / 3600
+            ttxw = ttxw.reset_index().rename(columns={'interaction_seconds': f'time_first_{week_count}_wks'})
+            feat_click = feat_click.merge(ttxw, how='left')
 
         if feat == 'total_time_by_category':
             ttc = clicks_srt.groupby(id_cols + ['category'])['interaction_seconds'].sum() / 3600
@@ -181,14 +184,15 @@ def create_click_features(clickstream, course, feature_list, id_cols, out_dir, h
             ttc.columns = [col[0] + str(col[1]) for col in ttc.columns.values]
             feat_click = feat_click.merge(ttc, how='left')
 
-        if feat == 'total_time_by_category_first_two_weeks':
-            ttc2w = clicks_srt[clicks_srt['week'].between(1, 2)].groupby(id_cols + ['category'])[
+        if re.match(r'total_time_by_category_first_\d+_weeks', feat):
+            week_count = int(re.findall(r'\d+', feat)[0])
+            ttcxw = clicks_srt[clicks_srt['week'].between(1, week_count)].groupby(id_cols + ['category'])[
                         'interaction_seconds'].sum() / 3600
-            ttc2w = ttc2w.reset_index().rename(columns={'interaction_seconds': 'time_'})
-            ttc2w = pd.pivot_table(ttc2w, values=['time_'], index=id_cols, columns='category')
-            ttc2w.columns = [col[0] + str(col[1]) for col in ttc2w.columns.values]
-            ttc2w = ttc2w.add_suffix('_first_two_wks').reset_index()
-            feat_click = feat_click.merge(ttc2w, how='left')
+            ttcxw = ttcxw.reset_index().rename(columns={'interaction_seconds': 'time_'})
+            ttcxw = pd.pivot_table(ttcxw, values=['time_'], index=id_cols, columns='category')
+            ttcxw.columns = [col[0] + str(col[1]) for col in ttcxw.columns.values]
+            ttcxw = ttcxw.add_suffix(f'_first_{week_count}_wks').reset_index()
+            feat_click = feat_click.merge(ttcxw, how='left')
 
     feat_click.set_index(id_cols, inplace=True)
     feat_click[feat_click.notnull().any(axis=1)] = feat_click.fillna(0)

@@ -4,7 +4,7 @@ institutional:
 
 click:
   - total_clicks
-  - total_clicks_first_two_weeks
+  - total_clicks_first_2_weeks
   - total_clicks_by_category
 
 survey:
