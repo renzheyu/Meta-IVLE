@@ -126,7 +126,7 @@ def create_click_features(clickstream, course, feature_list, id_cols, out_dir, h
 
     for feat in feature_list:
 
-        if re.match(r'first_\d+_weeks', feat):
+        if re.search(r'first_\d+_weeks', feat):
             week_count = int(re.findall(r'\d+', feat)[0])
             clicks_base = clicks_srt[clicks_srt['week'].between(1, week_count)]
             suffix = f'_first_{week_count}_wks'
@@ -155,7 +155,7 @@ def create_click_features(clickstream, course, feature_list, id_cols, out_dir, h
                 df = pd.pivot_table(df, values=['time_week_'], index=id_cols, columns='week')
                 df.columns = [col[0] + str(col[1]) for col in df.columns.values]
             elif 'by_category' in feat:
-                df = (clicks_base.groupby(id_cols + ['category'])['interaction_seconds'].sum() / 3600.reset_index(
+                df = (clicks_base.groupby(id_cols + ['category'])['interaction_seconds'].sum() / 3600).reset_index(
                       ).rename(columns={'interaction_seconds': 'time_'})
                 df = pd.pivot_table(df, values=['time_'], index=id_cols, columns='category')
                 df.columns = [col[0] + str(col[1]) for col in df.columns.values]
