@@ -235,7 +235,7 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
             )
             if not tune_models:
                 params = hyperparams.get((feature, label, model))
-                clf.set_params(**params)
+                estimator.set_params(**params)
                 predicted = cross_val_predict(estimator, X, y, groups=groups, cv=logo)
                 predicted_proba = cross_val_predict(estimator, X, y, groups=groups, cv=logo, method='predict_proba')[
                                   :, 1]
