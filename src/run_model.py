@@ -7,7 +7,7 @@ from itertools import product
 from src.utils import *
 
 from sklearn.pipeline import Pipeline, make_union
-from sklearn.preprocessing import robust_scale, Imputer
+from sklearn.preprocessing import robust_scale
 from sklearn.impute import SimpleImputer, MissingIndicator
 from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict, GridSearchCV
 from sklearn.linear_model import LogisticRegression
@@ -15,8 +15,6 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from statsmodels.stats.proportion import proportions_ztest
 
-from aequitas.group import Group
-from aequitas.bias import Bias
 
 def create_master_table(hdf_in, hdf_out, out_dir, max_var_miss, label_table_names,
                         protected_table_name='protected_attributes', table_names=None, merge_how='outer',
