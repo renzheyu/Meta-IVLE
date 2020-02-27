@@ -6,7 +6,7 @@ from functools import reduce
 from itertools import product
 from src.utils import *
 
-from sklearn.pipeline import make_pipeline, make_union
+from sklearn.pipeline import Pipeline, make_union
 from sklearn.preprocessing import robust_scale, Imputer
 from sklearn.impute import SimpleImputer, MissingIndicator
 from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict, GridSearchCV
@@ -153,60 +153,6 @@ def get_labels(master_table, label_name, label_group='labels', to_numpy=False):
     return label_table
 
 
-def get_tuned_model(model_name, X, y, groups, rseed, params=None, param_grid=None, tune=False):
-    """
-    Configure a classifier instance given the input model name
-    Currently no hyperparameter tuning but can accommodate in future versions
-
-    Parameters
-    ----------
-    model_name : str
-
-    X: Pandas DataFrame
-        The feature matrix obtained from master table
-
-    y: Pandas DataFrame
-        The label array
-
-    params : dict or None
-        If not None, a dictionary of parameters for the specified classifier, in the form of {param_name: param_value}
-
-    param_grid: dict or None
-        If not None, a dictionary of parameters for the specified classifier that will be used for GridSearch
-
-    Returns
-    -------
-    clf : Scikit-learn estimator
-        Configured classifier
-    """
-    clf_dict = {
-        'logistic_regression': LogisticRegression(random_state=rseed),
-        'svm': SVC(probability=True, random_state=rseed),
-        'random_forest': RandomForestClassifier(random_state=rseed)
-    }
-    clf = clf_dict[model_name]
-
-    if tune and param_grid is not None:
-       imputer = Imputer()
-       x_imputed = imputer.fit_transform(X)
-       indicator = MissingIndicator(features='all')
-       x = indicator.fit_transform(x_imputed)
-
-       logo = LeaveOneGroupOut()
-       clf_tuned = GridSearchCV(clf, param_grid, cv=logo)
-       clf_tuned.fit(x, y, groups=groups)
-       best_params = clf_tuned.best_params_
-       print(best_params)
-       predicted = clf_tuned.predict(x)
-       predicted_proba = clf_tuned.predict_proba(x)[:,1]
-       return predicted, predicted_proba, best_params
-
-    if params is not None:
-        clf.set_params(**params)
-
-    return clf
-
-
 def run_pred_models(master_table, features, labels, models, group_var, rseed, model_dir, result_dir, result_hdf,
                     tune_models=False, to_csv=True):
     """
@@ -227,7 +173,7 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
         List of label names, as columns in master_table
 
     models : dict
-        Dictionary of models and their best parameters
+        Dictionary of models along with their associated hyperparameters to do grid search on
 
     group_var : str
         Variable name to group samples for cross validation. Currently must be in the index of master_table
@@ -263,6 +209,11 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
     unique_id = master_table.index.to_frame().reset_index(drop=True)
     pred_res = pd.DataFrame([], columns=unique_id.columns.tolist()+['model_id', 'y_true', 'y_pred'])
     best_params_file_path = os.path.join(model_dir, 'best_hyperparams.pickle')
+    clf_dict = {
+        'logistic_regression': LogisticRegression(random_state=rseed),
+        'svm': SVC(probability=True, random_state=rseed),
+        'random_forest': RandomForestClassifier(random_state=rseed)
+    }
 
     if not tune_models:
         with open(best_params_file_path, 'rb') as f:
@@ -277,27 +228,38 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
         for model in models:
             model_id = len(model_info) + 1
             print(f'Predicting {label} using {feature} via {model}...')
-            if tune_models:
-                param_grid = models[model]
-                predicted, predicted_proba, best_params = get_tuned_model(model, X, y, groups, rseed, param_grid=param_grid, tune=True)
-                hyperparams[model_id] = best_params
-            else:
-                parameters = hyperparams[model_id]
-                clf = get_tuned_model(model, X, y, groups, rseed, params=parameters)
-                logo = LeaveOneGroupOut()
-                estimator = make_pipeline(make_union(SimpleImputer(strategy='constant', fill_value=0), MissingIndicator(
-                    features='all')), clf)
+            clf = clf_dict[model]
+            logo = LeaveOneGroupOut()
+            estimator = Pipeline(
+                [('prep', make_union(SimpleImputer(strategy='constant', fill_value=0), MissingIndicator(
+                    features='all'))),
+                 ('clf', clf)]
+            )
+            if not tune_models:
+                params = hyperparams.get((feature, label, model))
+                clf.set_params(**params)
                 predicted = cross_val_predict(estimator, X, y, groups=groups, cv=logo)
-                predicted_proba = cross_val_predict(estimator, X, y, groups=groups, cv=logo, method="predict_proba")[:,1]
+                predicted_proba = cross_val_predict(estimator, X, y, groups=groups, cv=logo, method='predict_proba')[
+                                  :, 1]
+            else:
+                params_grid = models.get(model)
+                params_grid = {'clf__'+param: params_grid[param] for param in params_grid}
+                clf_tuned = GridSearchCV(estimator, params_grid, cv=logo)
+                clf_tuned.fit(X, y, groups=groups)
+                best_params = clf_tuned.best_params_
+                print(best_params)
+                predicted = clf_tuned.predict(X)
+                predicted_proba = clf_tuned.predict_proba(X)[:, 1]
+                hyperparams[(feature, label, model)] = best_params
 
             model_info = model_info.append({'model_id': model_id, 'feature': feature, 'label': label, 'model': model},
                               ignore_index=True)
-            res = pd.DataFrame({'model_id': model_id, 'y_true': y, 'y_pred': predicted, 'upper_level_score': predicted_proba})
+            res = pd.DataFrame({'model_id': model_id, 'y_true': y, 'y_pred': predicted, 'y_proba': predicted_proba})
             pred_res = pred_res.append(pd.concat([unique_id, res], axis=1))
 
     if tune_models:
-        with open(best_params_file_path, 'wb') as handle:
-            pickle.dump(hyperparams, handle)
+        with open(best_params_file_path, 'wb') as f:
+            pickle.dump(hyperparams, f)
         print("Tuned hyperparameters saved to pickle file")
 
     result_hdf.put('model_info', model_info)
@@ -422,10 +384,10 @@ def compute_bias(df, ref_groups, metrics):
         groups = [ i for i in groups if str(i) != 'nan']
         df_ref = df_att.get_group(ref_group)
 
-        fp_ref = len(df_ref.query('label_value == 0 and score == 1'))
-        fn_ref = len(df_ref.query('label_value == 1 and score == 0'))
-        tn_ref = len(df_ref.query('label_value == 0 and score == 0'))
-        tp_ref = len(df_ref.query('label_value == 1 and score == 1'))
+        fp_ref = len(df_ref.query('y_true == 0 and y_pred == 1'))
+        fn_ref = len(df_ref.query('y_true == 1 and y_pred == 0'))
+        tn_ref = len(df_ref.query('y_true == 0 and y_pred == 0'))
+        tp_ref = len(df_ref.query('y_true == 1 and y_pred == 1'))
 
         for metric in metrics:
             if metric == 'acc':
@@ -439,14 +401,14 @@ def compute_bias(df, ref_groups, metrics):
             attribute_value = group
             df_group = df_att.get_group(group)
             group_n = len(df_group)
-            label_pos = len(df_group[df_group['label_value'] == 1])
+            label_pos = len(df_group[df_group['y_true'] == 1])
             label_neg = group_n - label_pos
-            pp = len(df_group[df_group['score'] == 1])
+            pp = len(df_group[df_group['y_pred'] == 1])
             pn = group_n - pp
-            fp = len(df_group.query('label_value == 0 and score == 1'))
-            fn = len(df_group.query('label_value == 1 and score == 0'))
-            tn = len(df_group.query('label_value == 0 and score == 0'))
-            tp = len(df_group.query('label_value == 1 and score == 1'))
+            fp = len(df_group.query('y_true == 0 and y_pred == 1'))
+            fn = len(df_group.query('y_true == 1 and y_pred == 0'))
+            tn = len(df_group.query('y_true == 0 and y_pred == 0'))
+            tp = len(df_group.query('y_true == 1 and y_pred == 1'))
 
             metric_dict = dict()
             for metric in metrics:
@@ -529,8 +491,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, metrics, out_dir, hdf,
             model_id | attribute_name | attribute_value | bias1_disparity | bias1_significance | ...
     """
     id_cols = protected_attrs.index.to_frame().columns
-    df = pred_res.merge(protected_attrs.reset_index()).drop(id_cols, axis=1).rename(columns={'y_pred': 'score',
-                                                                                             'y_true': 'label_value'})
+    df = pred_res.merge(protected_attrs.reset_index()).drop(id_cols, axis=1)
 
     bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups, metrics=metrics).reset_index().drop(
         'level_1', axis=1)
