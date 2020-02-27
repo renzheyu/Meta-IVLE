@@ -126,73 +126,45 @@ def create_click_features(clickstream, course, feature_list, id_cols, out_dir, h
 
     for feat in feature_list:
 
-        if feat == 'total_clicks':
-            tc = clicks_srt.groupby(id_cols)['action'].count().reset_index().rename(columns={'action': 'total_clicks'})
-            feat_click = feat_click.merge(tc, how='left')
-
-        if feat == 'total_clicks_by_week':
-            tcw = clicks_srt.groupby(id_cols+['week'])['action'].count().reset_index().rename(columns={
-                'action': 'clicks_week_'})
-            tcw = pd.pivot_table(tcw, values=['clicks_week_'], index=id_cols, columns='week').reset_index()
-            tcw.columns = [col[0] + str(col[1]) for col in tcw.columns.values]
-            feat_click = feat_click.merge(tcw, how='left')
-
-        if feat == 'total_clicks_first_two_weeks':
-            tc2w = clicks_srt[clicks_srt['week'].between(1, 2)].groupby(id_cols)['action'].count().reset_index().rename(
-                columns={'action': 'clicks_first_two_wks'})
-            feat_click = feat_click.merge(tc2w, how='left')
-
-        if feat == 'total_clicks_by_category':
-            tcc = clicks_srt.groupby(id_cols+['category'])['action'].count().reset_index().rename(columns={
-                'action': 'clicks_'})
-            tcc = pd.pivot_table(tcc, values=['clicks_'], index=id_cols, columns='category')
-            tcc.columns = [col[0] + str(col[1]) for col in tcc.columns.values]
-            tcc.reset_index(inplace=True)
-            feat_click = feat_click.merge(tcc, how='left')
-
-        if feat == 'total_clicks_by_category_first_two_weeks':
-            tcc2w = clicks_srt[clicks_srt['week'].between(1, 2)].groupby(id_cols+['category'])['action'].count(
-                ).reset_index().rename(columns={'action': 'clicks_'})
-            tcc2w = pd.pivot_table(tcc2w, values=['clicks_'], index=id_cols, columns='category')
-            tcc2w.columns = [col[0] + str(col[1]) for col in tcc2w.columns.values]
-            tcc2w = tcc2w.add_suffix('_first_two_wks').reset_index()
-            feat_click = feat_click.merge(tcc2w, how='left')
-
-        if feat == 'total_time':
-            tt = clicks_srt.groupby(id_cols)['interaction_seconds'].sum() / 3600
-            tt = tt.reset_index().rename(columns={'interaction_seconds': 'total_time'})
-            feat_click = feat_click.merge(tt, how='left')
-
-        if feat == 'total_time_by_week':
-            ttw = clicks_srt.groupby(id_cols + ['week'])['interaction_seconds'].sum() / 3600
-            ttw = ttw.reset_index().rename(columns={'interaction_seconds': 'time_week_'})
-            ttw = pd.pivot_table(ttw, values=['time_week_'], index=id_cols, columns='week').reset_index()
-            ttw.columns = [col[0] + str(col[1]) for col in ttw.columns.values]
-            feat_click = feat_click.merge(ttw, how='left')
-
-        if re.match(r'total_time_first_\d+_weeks', feat):
+        if re.match(r'first_\d+_weeks', feat):
             week_count = int(re.findall(r'\d+', feat)[0])
-            ttxw = clicks_srt[clicks_srt['week'].between(1, week_count)].groupby(id_cols)['interaction_seconds'].sum(
-              ) / 3600
-            ttxw = ttxw.reset_index().rename(columns={'interaction_seconds': f'time_first_{week_count}_wks'})
-            feat_click = feat_click.merge(ttxw, how='left')
+            clicks_base = clicks_srt[clicks_srt['week'].between(1, week_count)]
+            suffix = f'_first_{week_count}_wks'
+        else:
+            clicks_base = clicks_srt.copy()
+            suffix = ''
 
-        if feat == 'total_time_by_category':
-            ttc = clicks_srt.groupby(id_cols + ['category'])['interaction_seconds'].sum() / 3600
-            ttc = ttc.reset_index().rename(columns={'interaction_seconds': 'time_'})
-            ttc = pd.pivot_table(ttc, values=['time_'], index=id_cols, columns='category').reset_index()
-            ttc.columns = [col[0] + str(col[1]) for col in ttc.columns.values]
-            feat_click = feat_click.merge(ttc, how='left')
+        if 'total_clicks' in feat:
+            if 'by_week' in feat:
+                df = clicks_base.groupby(id_cols+['week'])['action'].count().reset_index().rename(columns={
+                    'action': 'clicks_week_'})
+                df = pd.pivot_table(df, values=['clicks_week_'], index=id_cols, columns='week')
+                df.columns = [col[0] + str(col[1]) for col in df.columns.values]
+            elif 'by_category' in feat:
+                df = clicks_base.groupby(id_cols+['category'])['action'].count().reset_index().rename(columns={
+                    'action': 'clicks_'})
+                df = pd.pivot_table(df, values=['clicks_'], index=id_cols, columns='category')
+                df.columns = [col[0] + str(col[1]) for col in df.columns.values]
+            else:
+                df = clicks_base.groupby(id_cols)['action'].count().to_frame().rename(columns={'action':'total_clicks'})
 
-        if re.match(r'total_time_by_category_first_\d+_weeks', feat):
-            week_count = int(re.findall(r'\d+', feat)[0])
-            ttcxw = clicks_srt[clicks_srt['week'].between(1, week_count)].groupby(id_cols + ['category'])[
-                        'interaction_seconds'].sum() / 3600
-            ttcxw = ttcxw.reset_index().rename(columns={'interaction_seconds': 'time_'})
-            ttcxw = pd.pivot_table(ttcxw, values=['time_'], index=id_cols, columns='category')
-            ttcxw.columns = [col[0] + str(col[1]) for col in ttcxw.columns.values]
-            ttcxw = ttcxw.add_suffix(f'_first_{week_count}_wks').reset_index()
-            feat_click = feat_click.merge(ttcxw, how='left')
+        elif 'total_time' in feat:
+            if 'by_week' in feat:
+                df = (clicks_base.groupby(id_cols + ['week'])['interaction_seconds'].sum() / 3600).reset_index().rename(
+                    columns={'interaction_seconds': 'time_week_'})
+                df = pd.pivot_table(df, values=['time_week_'], index=id_cols, columns='week')
+                df.columns = [col[0] + str(col[1]) for col in df.columns.values]
+            elif 'by_category' in feat:
+                df = (clicks_base.groupby(id_cols + ['category'])['interaction_seconds'].sum() / 3600.reset_index(
+                      ).rename(columns={'interaction_seconds': 'time_'})
+                df = pd.pivot_table(df, values=['time_'], index=id_cols, columns='category')
+                df.columns = [col[0] + str(col[1]) for col in df.columns.values]
+            else:
+                df = (clicks_base.groupby(id_cols)['interaction_seconds'].sum() / 3600).to_frame().rename(columns={
+                    'interaction_seconds': 'total_time'})
+
+        df = df.add_suffix(suffix).reset_index()
+        feat_click = feat_click.merge(df, how='left')
 
     feat_click.set_index(id_cols, inplace=True)
     feat_click[feat_click.notnull().any(axis=1)] = feat_click.fillna(0)
