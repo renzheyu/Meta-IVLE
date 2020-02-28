@@ -233,22 +233,19 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
                  ('clf', clf)]
             )
             if not tune_models:
-                params = hyperparams.get((feature, label, model))
-                estimator.set_params(**params)
-                predicted = cross_val_predict(estimator, X, y, groups=groups, cv=logo)
-                predicted_proba = cross_val_predict(estimator, X, y, groups=groups, cv=logo, method='predict_proba')[
-                                  :, 1]
+                best_params = hyperparams.get((feature, label, model))
             else:
                 params_grid = models.get(model)
                 params_grid = {'clf__'+param: params_grid[param] for param in params_grid}
                 clf_tuned = GridSearchCV(estimator, params_grid, cv=logo, n_jobs=3)
                 clf_tuned.fit(X, y, groups=groups)
                 best_params = clf_tuned.best_params_
-                print(best_params)
-                predicted = clf_tuned.predict(X)
-                predicted_proba = clf_tuned.predict_proba(X)[:, 1]
                 hyperparams[(feature, label, model)] = best_params
-
+            print(best_params)
+            estimator.set_params(**best_params)
+            predicted = cross_val_predict(estimator, X, y, groups=groups, cv=logo)
+            predicted_proba = cross_val_predict(estimator, X, y, groups=groups, cv=logo, method='predict_proba')[
+                              :, 1]
             model_info = model_info.append({'model_id': model_id, 'feature': feature, 'label': label, 'model': model},
                               ignore_index=True)
             res = pd.DataFrame({'model_id': model_id, 'y_true': y, 'y_pred': predicted, 'y_proba': predicted_proba})
