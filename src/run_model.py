@@ -242,7 +242,7 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
             else:
                 params_grid = models.get(model)
                 params_grid = {'clf__'+param: params_grid[param] for param in params_grid}
-                clf_tuned = GridSearchCV(estimator, params_grid, cv=logo)
+                clf_tuned = GridSearchCV(estimator, params_grid, cv=logo, n_jobs=3)
                 clf_tuned.fit(X, y, groups=groups)
                 best_params = clf_tuned.best_params_
                 print(best_params)
