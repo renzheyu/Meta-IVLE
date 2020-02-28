@@ -229,8 +229,7 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
             clf = clf_dict[model]
             logo = LeaveOneGroupOut()
             estimator = Pipeline(
-                [('prep', make_union(SimpleImputer(strategy='constant', fill_value=0), MissingIndicator(
-                    features='all'))),
+                [('impute', SimpleImputer(strategy='constant', fill_value=0)),
                  ('clf', clf)]
             )
             if not tune_models:
