@@ -313,7 +313,7 @@ def create_labels(student_info, enrollment, label_dict, id_cols, out_dir, hdf, t
         print(f'Labels saved to {csv_path}')
 
 
-def create_protected_attributes(student_info, clickstream, enrollment, attr_list, id_cols, out_dir, hdf, to_csv=True):
+def create_protected_attributes(student_info, attr_list, id_cols, out_dir, hdf, to_csv=True):
     """
     Construct protected attributes and save to disk
 
@@ -321,12 +321,6 @@ def create_protected_attributes(student_info, clickstream, enrollment, attr_list
     ----------
     student_info : Pandas DataFrame
         Student-by-course information (including demographics, prior academic history, survey responses, etc.)
-
-    clickstream : Pandas DataFrame
-        Student-by-course-level institutional information (including prior academic history)
-
-    enrollment : Pandas DataFrame
-        Student-by-course enrollment records (with grades)
 
     attr_list : list
         List of protected attributes to create
@@ -409,5 +403,5 @@ def run(semantic_dir, feature_dir, feature_config):
                               cat_dict=config.get('url_cats'))
         create_survey_features(student_info, config.get('survey'), id_cols, feature_dir, hdf_feature)
         create_labels(student_info, enrollment, config.get('label'), id_cols, feature_dir, hdf_feature)
-        create_protected_attributes(student_info, clickstream, enrollment, config.get('protected'), id_cols,
+        create_protected_attributes(student_info, config.get('protected'), id_cols,
                                     feature_dir, hdf_feature)
