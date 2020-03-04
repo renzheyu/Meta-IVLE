@@ -267,7 +267,9 @@ def run(result_dir, vis_dir, vis_config):
         pred_score = hdf_result['pred_score']
         pred_bias = hdf_result['pred_bias']
 
-        best_pred_score = get_best_pred_score(model_info, pred_score, result_dir, hdf_result)
+        best_pred_score = get_best_pred_score(model_info, pred_score, result_dir, hdf_result, metrics=config.get(
+            'metrics'))
+        best_pred_score = hdf_result['best_pred_score']
         pred_bias_mat = get_pred_bias_mat(pred_bias, best_pred_score, result_dir, hdf_result,
                                           neglected_groups=config.get('neglected_groups'),
                                           small_group_threshold=config.get('small_group_threshold'))
