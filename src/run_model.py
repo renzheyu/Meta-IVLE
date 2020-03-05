@@ -379,6 +379,7 @@ def compute_bias(df, ref_groups, metrics):
         df_ref = df_att.get_group(ref_group)
 
         fp_ref = len(df_ref.query('y_true == 0 and y_pred == 1'))
+        print(type(fp_ref))
         fn_ref = len(df_ref.query('y_true == 1 and y_pred == 0'))
         tn_ref = len(df_ref.query('y_true == 0 and y_pred == 0'))
         tp_ref = len(df_ref.query('y_true == 1 and y_pred == 1'))
@@ -445,6 +446,10 @@ def compute_bias(df, ref_groups, metrics):
             row = pd.DataFrame([row])
 
             bdf = bdf.append(row, ignore_index=True, sort=False)
+
+    non_numeric = ['attribute_name', 'attribute_value', 'ref_group_value']
+    numeric = bdf.columns.difference(non_numeric)
+    bdf[numeric] = bdf[numeric].apply(pd.to_numeric)
 
     return bdf
 
