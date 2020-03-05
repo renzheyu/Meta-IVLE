@@ -126,6 +126,7 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
                 f1
                 f2
     """
+
     def is_neglected_group(g, neglected_groups):
         groups = neglected_groups.get(g['attribute_name'])
         if groups is not None:
@@ -147,9 +148,9 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
     bias_metrics = metrics.intersection(pred_bias_valid.columns)
     for bias_metric in bias_metrics:
         model_sub = best_pred_score[['feature', 'label']]
-        model_sub['model_id'] = best_pred_score[bias_metric+'_model_id']
+        model_sub['model_id'] = best_pred_score[bias_metric + '_model_id']
         pred_bias_sub = pred_bias_valid[group_cols]
-        pred_bias_sub['disparity'] = pred_bias_valid[bias_metric+'_disparity']
+        pred_bias_sub['disparity'] = pred_bias_valid[bias_metric + '_disparity']
         pred_bias_sub['significance'] = pred_bias_valid[bias_metric + '_significance']
         pred_bias_sub['metric'] = bias_metric
         pred_bias_sub = model_sub.merge(pred_bias_sub, how='left')
@@ -203,7 +204,7 @@ def heatmap_pred_bias(pred_bias_mat, out_dir, sig_level=0.1):
     ----------
     pred_bias_mat : Pandas Dataframe
         Matrix representation of prediction biases for each feature set and target against different groups
-        Format:
+        Format: (Column level names are not exact)
                     Disparity                           Significance
             Target  t1                t2                t1                t2
             Metric  m1       m2       m1       m2       m1       m2       m1       m2
@@ -219,6 +220,7 @@ def heatmap_pred_bias(pred_bias_mat, out_dir, sig_level=0.1):
         P-value threshold for statistical significance
 
     """
+
     def crossout(points, ax, scale=1, **kwargs):
         l = np.array([[[1, 1], [-1, -1]]]) * scale / 2.
         r = np.array([[[-1, 1], [1, -1]]]) * scale / 2.
@@ -227,24 +229,27 @@ def heatmap_pred_bias(pred_bias_mat, out_dir, sig_level=0.1):
         ax.add_collection(c)
         return c
 
-    fig, ax = plt.subplots(1, 1, figsize=(40, 25))
-    im = ax.matshow(pred_bias_mat['disparity'], cmap='Blues')
-    cbar = plt.colorbar(im, shrink=0.4)
-    cbar.ax.tick_params(labelsize=22)
-    cbar.ax.yaxis.set_ticks_position('left')
-    cbar.ax.set_ylabel('Ratio to ref. group', fontsize=22, fontweight='bold')
-    ax.set_xticks(np.arange(pred_bias_mat['disparity'].shape[1]))
-    ax.set_xticklabels(pred_bias_mat.columns.get_level_values('attribute_value'), rotation=90, fontsize=20,
-                       fontweight='bold')
-    ax.set_yticks(np.arange(pred_bias_mat['disparity'].shape[0]))
-    ax.set_yticklabels(pred_bias_mat['disparity'].index.str.upper(), fontsize=20, fontweight='bold')
-    ax.grid(False)
-    crossout(np.argwhere(((pred_bias_mat['disparity'].to_numpy() > 1) & (pred_bias_mat['significance'].to_numpy() <
-                                                                         sig_level)).T), ax=ax, scale=0.8, color="black")
+    for label in pred_bias_mat.columns.get_level_values('label').unique():
+        print(label)
+        disparity_mat = pred_bias_mat.loc[:, ('disparity', label)]
+        significance_mat = pred_bias_mat.loc[:, ('significance', label)]
+        fig, ax = plt.subplots(1, 1, figsize=(30, 25))
+        im = ax.matshow(disparity_mat, cmap='Blues')
+        cbar = plt.colorbar(im, shrink=0.4)
+        cbar.ax.tick_params(labelsize=22)
+        cbar.ax.yaxis.set_ticks_position('left')
+        cbar.ax.set_ylabel('Ratio to ref. group', fontsize=22, fontweight='bold')
+        ax.set_xticks(np.arange(disparity_mat.shape[1]))
+        ax.set_xticklabels(disparity_mat.columns.get_level_values('attribute_value'), rotation=90, fontsize=20,
+                           fontweight='bold')
+        ax.set_yticks(np.arange(disparity_mat.shape[0]))
+        ax.set_yticklabels(disparity_mat.index.str.upper(), fontsize=20, fontweight='bold')
+        ax.grid(False)
+        crossout(np.argwhere((significance_mat.to_numpy() < sig_level).T), ax=ax, scale=0.8, color="black")
 
-    png_path = os.path.join(out_dir, 'pred_bias.png')
-    plt.savefig(png_path, dpi=400, bbox_inches='tight')
-    print(f'Plot of prediction bias saved to {png_path}')
+        png_path = os.path.join(out_dir, f'pred_bias_{label}.png')
+        plt.savefig(png_path, dpi=400, bbox_inches='tight')
+        print(f'Plot of prediction bias saved to {png_path}')
 
 
 def run(result_dir, vis_dir, vis_config):
