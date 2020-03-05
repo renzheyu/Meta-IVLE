@@ -80,6 +80,27 @@ def convert_score_to_letter(score, letter_score_dict=None):
             letter = l
     return letter
 
+def is_valid_gpa(s):
+    """
+    Test if an input string represents a valid GPA (0-4)
+
+    Parameters
+    ----------
+    s : str
+        The input string
+
+    Returns
+    -------
+    _ : boolean
+    """
+    try:
+        if 0 <= float(s) <= 4:
+            return True
+        else:
+            return False
+    except ValueError:
+        return False
+
 def parse_course_name(raw_course_name):
     """
     Parse a course name string into a tuple of course elements
