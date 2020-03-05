@@ -176,9 +176,7 @@ def load_student_info(course_dir_list, out_dir, col_dict, hdf, to_csv=True):
         merged_student_info.reset_index(inplace=True, drop=True)
 
     if 'grade' in merged_student_info.columns:
-        merged_student_info['grade'] = merged_student_info['grade'].astype('category')
-        merged_student_info['grade'].cat.set_categories(['F', 'D-', 'D', 'D+', 'C-', 'C', 'C+', 'B-', 'B', 'B+', 'A-',
-                                                         'A', 'A+'], ordered=True, inplace=True)
+        merged_student_info['grade_point'] = merged_student_info['grade'].apply(convert_letter_to_grade_point)
 
     hdf.put('student', merged_student_info)
     print('Merged student info table saved to HDFStore')
