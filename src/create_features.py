@@ -47,6 +47,8 @@ def create_institutional_features(student_info, feature_list, id_cols, out_dir, 
             feat_dem['islowincome'] = student_info['lowincomeflag'].map({'Y': 1, 'N': 0})
         if feat == 'isfirstgen':
             feat_dem['isfirstgen'] = student_info['firstgenerationflag'].map({'Y': 1, 'N': 0})
+        if feat == 'ethnicity':
+            feat_dem = pd.concat([feat_dem, pd.get_dummies(student_info['eth2009rollupforreporting'])], axis=1)
         if feat == 'isurm':
             feat_dem['isurm'] = student_info['eth2009rollupforreporting'].map({'Black, non-Hispanic': 1, 'Hispanic': 1,
                                                                            'American Indian / Alaskan Native': 1,
