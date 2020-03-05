@@ -25,29 +25,29 @@ def load_yaml(filename):
         d = yaml.safe_load(ymlfile)
     return d
 
-def convert_letter_to_gpa(letter, letter_gpa_dict=None):
+def convert_letter_to_grade_point(letter, letter_gp_dict=None):
     """
-    Convert letter grade to GPA
+    Convert letter grade to grade point
     
     Parameters
     ----------
     letter : str
         The letter grade, e.g., 'A+' 
     
-    letter_gpa_dict : dict (optional)
-        Mapping between letter grade and GPA, in the form of {'letter': GPA}
+    letter_gp_dict : dict (optional)
+        Mapping between letter grade and grade point, in the form of {'letter': grade point}
     
     Returns
     -------
-    gpa : float
-        Converted GPA on a 4-point scale
+    grade_point : float
+        Converted grade point on a 4-point scale
     """
-    if letter_gpa_dict is None:
-        letter_gpa_dict = {'A+':4.0, 'A':4.0, 'A-':3.7, 'B+':3.3, 'B':3.0, 'B-':2.7,
+    if letter_gp_dict is None:
+        letter_gp_dict = {'A+':4.0, 'A':4.0, 'A-':3.7, 'B+':3.3, 'B':3.0, 'B-':2.7,
                            'C+':2.3, 'C':2.0, 'C-':1.7, 'D+':1.3, 'D':1.0, 'D-':0.7,
                            'F':0}
-    gpa = letter_gpa_dict.get(letter)
-    return gpa
+    grade_point = letter_gp_dict.get(letter)
+    return grade_point
 
 def convert_score_to_letter(score, letter_score_dict=None):
     """
