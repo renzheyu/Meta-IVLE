@@ -266,28 +266,27 @@ def create_labels(student_info, enrollment, label_dict, id_cols, out_dir, hdf, t
     # From the enrollment history of one single student, derive the (weighted) average GPA
     # Courses without a letter grade (e.g., P/NP) are not calculated
     def get_avg_gpa(df_stud_enroll):
-        df_stud_enroll_valid = df_stud_enroll[df_stud_enroll['GPA'].notnull()]
+        df_stud_enroll_valid = df_stud_enroll[df_stud_enroll['grade_point'].notnull()]
         if len(df_stud_enroll_valid) == 0:
             return np.nan
         else:
-            return np.average(df_stud_enroll_valid['GPA'], weights=df_stud_enroll_valid['courseunits'])
+            return np.average(df_stud_enroll_valid['grade_point'], weights=df_stud_enroll_valid['courseunits'])
 
     labels = student_info[id_cols]
     print('Creating labels')
 
-    for scope in label_dict['scope']:
+    for scope in label_dict:
         if scope == 'cur_course':
-            for threshold in label_dict['threshold']:
+            for threshold in label_dict[scope]:
                 if threshold == 'median':
                     labels['cur_course_over_median'] = student_info.groupby('course_id')['course_total'].transform(
                         lambda x: (x >= x.median()).astype(int))
                     labels['cur_course_over_median'] = np.where(student_info['course_total'].notnull(),
                                                             labels['cur_course_over_median'], np.nan)
-                else:
-                    labels[f'cur_course_over_{threshold}'] = student_info.groupby('course_id')['grade'].transform(
-                        lambda x: (x >= threshold).astype(int))
-                    labels[f'cur_course_over_{threshold}'] = np.where(student_info['grade'].notnull(),
-                                                                  labels[f'cur_course_over_{threshold}'], np.nan)
+                elif convert_letter_to_grade_point(threshold) is not None:
+                    labels[f'cur_course_over_{threshold}'] = np.where(student_info['grade'].notnull(), (student_info[
+                        'grade_point'] >= convert_letter_to_grade_point(threshold)).astype(int), np.nan)
+
         if scope == 'next_year':
             next_terms = student_info[['acadyr', 'acadterm']].drop_duplicates()
             next_terms = pd.concat(next_terms.apply(lambda x: get_next_terms(x['acadyr'], x['acadterm'], N_TERMS=4),
@@ -295,16 +294,20 @@ def create_labels(student_info, enrollment, label_dict, id_cols, out_dir, hdf, t
             stud_next_year = student_info[id_cols+['acadyr', 'acadterm']].merge(next_terms, how='left').merge(
                 enrollment, left_on=['roster_randomid', 'next_acadyr', 'next_acadterm'], right_on=[
                     'roster_randomid', 'acadyr', 'acadterm'], how='left')
-            stud_next_year['GPA'] = stud_next_year['grade'].apply(convert_letter_to_gpa)
+            stud_next_year['grade_point'] = stud_next_year['grade'].apply(convert_letter_to_grade_point)
             stud_next_year = stud_next_year.groupby(id_cols).apply(get_avg_gpa).reset_index().rename(columns={0:
                                                                                                          'next_year_GPA'})
-            for threshold in label_dict['threshold']:
+            for threshold in label_dict[scope]:
                 if threshold == 'median':
                     stud_next_year['next_year_over_median'] = stud_next_year.groupby('course_id')[
                         'next_year_GPA'].transform(lambda x: (x >= x.median()).astype(int))
                     stud_next_year['next_year_over_median'] = np.where(stud_next_year['next_year_GPA'].notnull(),
                                                                        stud_next_year['next_year_over_median'], np.nan)
-                    labels = labels.merge(stud_next_year.drop(columns='next_year_GPA'), how='left')
+                elif is_valid_gpa(threshold):
+                    stud_next_year[f'next_year_over_{threshold}'] = np.where(stud_next_year['next_year_GPA'].notnull(),
+                        (stud_next_year['next_year_GPA'] >= float(threshold)).astype(int), np.nan)
+                labels = labels.merge(stud_next_year.drop(columns='next_year_GPA'), how='left')
+
     labels.set_index(id_cols, inplace=True)
 
     hdf.put('labels', labels)
