@@ -116,7 +116,7 @@ def clean_student_table(course_name, course_id, student_table, col_dict):
         course_code = course_codes[course_codes.first_valid_index()]
         cleaned_student_table['coursecode'] = str(int(course_code))
 
-    # Calculate letter grades where missing and order these letter grades
+    # Calculate letter grades where missing
     if 'grade' in col_dict:
         if 'grade' not in cleaned_student_table.columns:
             cleaned_student_table['grade'] = np.nan
