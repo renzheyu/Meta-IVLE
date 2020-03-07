@@ -230,15 +230,10 @@ def heatmap_pred_bias(pred_bias_mat, out_dir, sig_level=0.1):
         return c
 
     for label in pred_bias_mat.columns.get_level_values('label').unique():
-        print(label)
         disparity_mat = pred_bias_mat.loc[:, ('disparity', label)]
         significance_mat = pred_bias_mat.loc[:, ('significance', label)]
-        fig, ax = plt.subplots(1, 1, figsize=(30, 25))
+        fig, ax = plt.subplots(1, 1, figsize=(25, 25))
         im = ax.matshow(disparity_mat, cmap='Blues')
-        cbar = plt.colorbar(im, shrink=0.4)
-        cbar.ax.tick_params(labelsize=22)
-        cbar.ax.yaxis.set_ticks_position('left')
-        cbar.ax.set_ylabel('Ratio to ref. group', fontsize=22, fontweight='bold')
         ax.set_xticks(np.arange(disparity_mat.shape[1]))
         ax.set_xticklabels(disparity_mat.columns.get_level_values('attribute_value'), rotation=90, fontsize=20,
                            fontweight='bold')
@@ -246,6 +241,10 @@ def heatmap_pred_bias(pred_bias_mat, out_dir, sig_level=0.1):
         ax.set_yticklabels(disparity_mat.index.str.upper(), fontsize=20, fontweight='bold')
         ax.grid(False)
         crossout(np.argwhere((significance_mat.to_numpy() < sig_level).T), ax=ax, scale=0.8, color="black")
+        cbar = plt.colorbar(im, shrink=0.3, ticks=np.arange(0, 10, 2), ax=ax)
+        cbar.ax.tick_params(labelsize=22)
+        cbar.ax.yaxis.set_ticks_position('left')
+        cbar.ax.set_ylabel('Ratio to ref. group', fontsize=22, fontweight='bold')
 
         png_path = os.path.join(out_dir, f'pred_bias_{label}.png')
         plt.savefig(png_path, dpi=400, bbox_inches='tight')
@@ -280,10 +279,11 @@ def run(result_dir, vis_dir, vis_config):
 
         best_pred_score = get_best_pred_score(model_info, pred_score, result_dir, hdf_result, metrics=config.get(
             'metrics'))
-        best_pred_score = hdf_result['best_pred_score']
+        # best_pred_score = hdf_result['best_pred_score']
         pred_bias_mat = get_pred_bias_mat(pred_bias, best_pred_score, result_dir, hdf_result,
                                           neglected_groups=config.get('neglected_groups'),
                                           small_group_threshold=config.get('small_group_threshold'))
+        # pred_bias_mat = hdf_result['pred_bias_mat']
 
-        barh_pred_score(best_pred_score, out_dir=vis_dir)
+        # barh_pred_score(best_pred_score, out_dir=vis_dir)
         heatmap_pred_bias(pred_bias_mat, vis_dir, sig_level=config.get('sig_level'))
