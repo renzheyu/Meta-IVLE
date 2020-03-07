@@ -271,7 +271,7 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
     return model_info, pred_res
 
 
-def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True):
+def eval_pred_res(pred_res, metrics, out_dir, hdf, to_csv=True):
     """
     Evaluate raw prediction results based on given metrics
 
@@ -291,43 +291,35 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
 
-    comp_model : boolean
-        If true, compare each pair of models and generate and return a comparison table
-
     to_csv : boolean
         Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
 
     Results
     -------
-    pred_eval_hits : Pandas DataFrame (to be deprecated)
-        Raw prediction results concatenated with binary evaluation of these results given each metric
-        For each metric, 1 assigned to predictions contributing to the numerator of its calculation, 0 to those
-        contributing to the denominator, and NaN to those not included in the calculation (Ex. false positive rate =
-        false positives / true negatives)
-        Format:
-            entity_id | model_id | metric1_ind | metric2_ind | ...
-
     pred_eval_score : Pandas DataFrame
-        Evaluation score of prediction results, one rwo per model
+        Evaluation score of prediction results, one row per model
         Format:
-            model_id | metric1 | metric2 | ...
-
-    model_comp : Pandas DataFrame (currently not used)
-        Results of statistical tests of pairwise model result comparisons
-        Format:
-            model_id_1 | model_id_2 | diff_metric1 | p_val_metrics1 | ...
+            model_id | tp | tn | fp | fn | f1 | metric1 | metric2 | ...
     """
-    pred_eval_hits = pred_res.drop(['y_true', 'y_pred'], axis=1)
+    pred_eval_score = pred_res.groupby('model_id').apply(lambda x: pd.DataFrame(
+        {
+            'tp': [len(x.query('y_true == 1 and y_pred == 1'))],
+            'tn': [len(x.query('y_true == 0 and y_pred == 0'))],
+            'fp': [len(x.query('y_true == 0 and y_pred == 1'))],
+            'fn': [len(x.query('y_true == 1 and y_pred == 0'))]
+        }
+    )).droplevel(1).apply(pd.to_numeric)
+
+    pred_eval_score = pred_eval_score.assign(f1=lambda x: 2*x['tp']/(2*x['tp']+x['fp']+x['fn']))
     for metric in metrics:
         print(f'Calculating {metric}...')
-        pred_eval_hits[metric] = get_pred_eval_hits(metric, pred_res['y_true'], pred_res['y_pred'])
-    pred_eval_score = pred_eval_hits.groupby('model_id')[metrics].mean().reset_index()
-    pred_eval_hits[metrics] = pred_eval_hits[metrics].add_suffix('_ind')
-    if comp_model:
-        # TODO
-        pass
-    else:
-        model_comp_res = None
+        if metric == 'acc':
+            pred_eval_score = pred_eval_score.assign(acc=lambda x: (x['tp']+x['tn'])/(x['tp']+x['tn']+x['fp']+x['fn']))
+        elif metric == 'fnr':
+            pred_eval_score = pred_eval_score.assign(fnr=lambda x: x['fn']/(x['fn']+x['tp']))
+        elif metric == 'fpr':
+            pred_eval_score = pred_eval_score.assign(fpr=lambda x: x['fp']/(x['fp']+x['tn']))
+    pred_eval_score = pred_eval_score.reset_index()
 
     hdf.put('pred_score', pred_eval_score)
     print('Prediction scores saved to HDFStore')
@@ -335,6 +327,35 @@ def eval_pred_res(pred_res, metrics, out_dir, hdf, comp_model=False, to_csv=True
         csv_path = os.path.join(out_dir, 'pred_score.csv')
         pred_eval_score.to_csv(csv_path, index=False)
         print(f'Prediction scores saved to {csv_path}')
+    return pred_eval_score
+
+
+def compare_pred_score(pred_eval_score, out_dir, hdf, to_csv=True):
+    """
+    Parameters
+    ----------
+    pred_eval_score : Pandas DataFrame
+        Evaluation score of prediction results, one row per model
+        Format:
+            model_id | tp | tn | fp | fn | f1 | metric1 | metric2 | ...
+
+    out_dir : str
+        Directory to save the resulting table
+
+    hdf : HDFStore object
+        Where the resulting table is stored (comparable to a schema in databases)
+
+    to_csv : boolean
+        Whether to save the resulting table in a .csv file (in addition to HDF) for easier examination
+
+    Results
+    -------
+    model_comp : Pandas DataFrame
+        Results of statistical tests of pairwise model result comparisons
+        Format:
+            model_id_1 | model_id_2 | diff_metric1 | p_val_metrics1 | ...
+    """
+    # TODO: write this function when necessary
 
 
 def compute_bias(df, ref_groups, metrics):
@@ -541,6 +562,8 @@ def run(feature_dir, model_dir, result_dir, model_config):
                                                    rseed=model_configs.get('random_seed'), model_dir=model_dir,
                                                    result_dir=result_dir, result_hdf=hdf_result,
                                                    tune_models=model_configs.get('tune_models'))
+            # master_table = hdf_result['master_table']
+            # pred_res = hdf_result['pred_res']
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
                            ref_groups=model_configs.get('ref_groups'), metrics=metrics,
