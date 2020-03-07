@@ -19,9 +19,9 @@ def get_best_pred_score(model_info, pred_score, out_dir, hdf, metrics=None, to_h
         model_id | feature | label | model
 
     pred_score : Pandas DataFrame
-        Evaluation score of prediction results, one rwo per model
+        Evaluation score of prediction results, one row per model
         Format:
-            model_id | metric1 | metric2 | ...
+            model_id | tp | tn | fp | fn | f1 | metric1 | metric2 | ...
 
     metrics : list
         List of metrics to find best results by, a subset of all the metrics in pred_score
@@ -43,29 +43,17 @@ def get_best_pred_score(model_info, pred_score, out_dir, hdf, metrics=None, to_h
     -------
     best_pred_score : Pandas DataFrame
         Format:
-            feature | label | metric1_model_id | metric1 | metric2_model_id | metric2 | ...
+            feature | label | model_id | metric1 | metric2 | ...
     """
-    grand_agg_dict = {
-        'acc': ['idxmax', 'max'],
-        'fpr': ['idxmin', 'min'],
-        'fnr': ['idxmin', 'min']
-    }
-    agg_dict = {}
     if metrics is not None:
         metric_list = metrics
     else:
-        metric_list = pred_score.columns.drop('model_id')
-    for metric in metric_list:
-        if metric in pred_score.columns.intersection(grand_agg_dict.keys()):
-            agg_dict[metric] = grand_agg_dict[metric]
+        metric_list = pred_score.columns.drop(['model_id', 'tp', 'tn', 'fp', 'fn'])
     model_info = categorize_table(model_info)
-    best_pred_score = model_info.merge(pred_score).groupby(['feature', 'label']).agg(agg_dict).reset_index()
-    best_pred_score.columns = ['_'.join(col) if col[1] != '' else col[0] for col in best_pred_score.columns]
-    idx_cols = best_pred_score.columns[best_pred_score.columns.str.contains('idx')]
-    for idx_col in idx_cols:
-        best_pred_score[idx_col] = model_info['model_id'].loc[best_pred_score[idx_col]].to_numpy()
-    best_pred_score.columns = best_pred_score.columns.str.replace(r'idx(min|max)', 'model_id')
-    best_pred_score.columns = best_pred_score.columns.str.replace(r'_(min|max)', '')
+    best_pred_score = model_info.merge(pred_score).groupby(['feature', 'label'])['f1'].idxmax().reset_index().rename(
+        {'f1': 'model_id'}, axis=1)
+    best_pred_score['model_id'] = best_pred_score['model_id'] + 1
+    best_pred_score = best_pred_score.merge(pred_score[['model_id']+metric_list])
 
     if to_hdf:
         hdf.put('best_pred_score', best_pred_score)
@@ -92,7 +80,7 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
 
     best_pred_score : Pandas DataFrame
         Format:
-            feature | label | metric1_model_id | metric1 | metric2_model_id | metric2 | ...
+            feature | label | model_id | metric1 | metric2_model_id | metric2 | ...
 
     neglected_groups : dict
         Groups to leave out in the plot for each attribute
@@ -134,7 +122,6 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
         else:
             return False
 
-    group_cols = ['model_id', 'attribute_name', 'attribute_value']
     f_ref_group = (pred_bias['attribute_value'] == pred_bias['ref_group_value'])
     f_small_group = (pred_bias['group_n'] <= pred_bias['total_n'] * small_group_threshold)
     if neglected_groups is not None:
@@ -144,12 +131,12 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
     pred_bias_valid = pred_bias[~(f_ref_group | f_small_group | f_neglected_group)]
 
     pred_bias_mat_long = pd.DataFrame([])
-    metrics = best_pred_score.columns[best_pred_score.columns.str.contains('_model_id')].str.replace('_model_id', '')
+    metrics = best_pred_score.columns.drop(['feature', 'label', 'model_id'])
     bias_metrics = metrics.intersection(pred_bias_valid.columns)
     for bias_metric in bias_metrics:
         model_sub = best_pred_score[['feature', 'label']]
-        model_sub['model_id'] = best_pred_score[bias_metric + '_model_id']
-        pred_bias_sub = pred_bias_valid[group_cols]
+        model_sub['model_id'] = best_pred_score['model_id']
+        pred_bias_sub = pred_bias_valid[['model_id', 'attribute_name', 'attribute_value']]
         pred_bias_sub['disparity'] = pred_bias_valid[bias_metric + '_disparity']
         pred_bias_sub['significance'] = pred_bias_valid[bias_metric + '_significance']
         pred_bias_sub['metric'] = bias_metric
