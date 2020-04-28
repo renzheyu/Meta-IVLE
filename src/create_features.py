@@ -212,14 +212,14 @@ def create_survey_features(student_info, feature_list, id_cols, out_dir, hdf, to
 
     for feat in feature_list:
         if feat == 'effort_regulation':
-            feat_svy['effort_regulation'] = student_info[['pre_er1', 'pre_er2', 'pre_er3', 'pre_er4']].sum(axis=1,
-                                                                                                           min_count=1)
+            feat_svy['effort_regulation'] = (student_info[['pre_er2', 'pre_er4']].join(6 - student_info[['pre_er1',
+                                                                                                         'pre_er3']])).mean(axis=1)
         if feat == 'time_management':
-            feat_svy['time_management'] = student_info[['pre_orsh4', 'pre_orsh5']].sum(axis=1, min_count=1)
+            feat_svy['time_management'] = student_info[['pre_orsh4', 'pre_orsh5']].mean(axis=1)
         if feat == 'self_efficacy':
-            feat_svy['self_efficacy'] = student_info[['pre_se1', 'pre_se2', 'pre_se3']].sum(axis=1, min_count=1)
+            feat_svy['self_efficacy'] = student_info[['pre_se1', 'pre_se2', 'pre_se3']].mean(axis=1)
         if 'environment_management' in feature_list:
-            feat_svy['environment_management'] = student_info[['pre_orsh1', 'pre_orsh2']].sum(axis=1, min_count=1)
+            feat_svy['environment_management'] = student_info[['pre_orsh1', 'pre_orsh2']].mean(axis=1)
 
     feat_svy.set_index(id_cols, inplace=True)
 
