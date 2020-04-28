@@ -335,3 +335,16 @@ def categorize_table(df):
         cat_type = pd.CategoricalDtype(categories=df_cat[col].unique(), ordered=True)
         df_cat[col] = df[col].astype(cat_type)
     return df_cat
+
+def is_neglected_group(g, neglected_groups):
+    """
+    Check if a group is to be neglected in the analysis of prediction bias
+    :param g: a row in the prediction bias table
+    :param neglected_groups: dict, in the form of {attr_name: attr_value}
+    :return: boolean
+    """
+    groups = neglected_groups.get(g['attribute_name'])
+    if groups is not None:
+        return g['attribute_value'] in groups
+    else:
+        return False
