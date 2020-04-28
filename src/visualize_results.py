@@ -114,14 +114,6 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
                 f1
                 f2
     """
-
-    def is_neglected_group(g, neglected_groups):
-        groups = neglected_groups.get(g['attribute_name'])
-        if groups is not None:
-            return g['attribute_value'] in groups
-        else:
-            return False
-
     f_ref_group = (pred_bias['attribute_value'] == pred_bias['ref_group_value'])
     f_small_group = (pred_bias['group_n'] <= pred_bias['total_n'] * small_group_threshold)
     if neglected_groups is not None:
@@ -156,6 +148,99 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
         print(f'Matrix of prediction bias saved to {csv_path}')
 
     return pred_bias_mat
+
+def bar_target_dist(pred_bias, model_info, out_dir, neglected_groups=None):
+    # TODO: docstring
+    target_dist = model_info.drop_duplicates('label')[['label', 'model_id']]
+    target_dist = target_dist.merge(pred_bias, on='model_id', how='left')
+    if neglected_groups is not None:
+        f_neglected_group = target_dist.apply(is_neglected_group, axis=1, args=(neglected_groups,))
+        target_dist = target_dist[~f_neglected_group]
+
+    targets = target_dist['label'].unique()
+    n_ticks = target_dist['attribute_value'].nunique() + target_dist['attribute_name'].nunique()
+    cls_names = ['label_pos', 'label_neg']
+    cls_labs = {'label_pos': 'upper half', 'label_neg': 'lower half'}
+
+    tick_names = []
+    tick_names_flag = False
+    for tar in targets:
+        fix, ax = plt.subplots(figsize=(5, n_ticks * 0.5))
+        width = 0.75 / len(cls_names)
+        tar_dist = target_dist.query(f'label == "{tar}"')
+        for i, cls in enumerate(cls_names):
+            cls_vals = []
+            for attr in tar_dist['attribute_name'].unique():
+                if not tick_names_flag:
+                    tick_names.append(attr.upper())
+                    tick_names += list(tar_dist.query(f'attribute_name == "{attr}"')['attribute_value'])
+                cls_vals.append(0)
+                cls_vals += list(tar_dist.query(f'attribute_name == "{attr}"')[cls])
+            tick_names_flag = True
+            ax.barh(np.arange(n_ticks)+i*width, cls_vals, width, left=0)
+        if cls_labs is not None:
+            cls_legend = [cls_labs.get(cls) for cls in cls_names]
+        else:
+            cls_legend = cls_names
+        ax.legend(cls_legend, fontsize=12, loc='upper right')
+        ax.set_xlabel('# students'.upper(), fontsize=13)
+        ax.set_yticks(np.arange(n_ticks) + width / 2)
+        ax.set_yticklabels(tick_names, fontsize=10)
+        ax.set_ylim(0, n_ticks-width)
+        ax.invert_yaxis()
+        ax.grid(False, axis='y')
+        ax.tick_params(labelsize=14, top='off', left='off')
+
+        png_path = os.path.join(out_dir, f'target_dist_{tar}.png')
+        plt.savefig(png_path, dpi=400, bbox_inches='tight')
+        print(f'Plot of target distribution saved to {png_path}')
+
+
+# def bar_target_dist(pred_bias, model_info, out_dir, neglected_groups=None, baseline=None, alias=None):
+#     # TODO: docstring
+#     target_dist = model_info.drop_duplicates('label')[['label', 'model_id']]
+#     target_dist = target_dist.merge(pred_bias, on='model_id', how='left')
+#     if neglected_groups is not None:
+#         f_neglected_group = target_dist.apply(is_neglected_group, axis=1, args=(neglected_groups,))
+#         target_dist = target_dist[~f_neglected_group]
+#
+#     targets = target_dist['label'].unique()
+#     n_ticks = target_dist['attribute_value'].nunique() + target_dist['attribute_name'].nunique()
+#     fix, ax = plt.subplots(figsize=(5, n_ticks*0.5))
+#     width = 0.75 / len(targets)
+#
+#     tick_names = []
+#     tick_names_flag = False
+#     for (i, tar) in enumerate(targets):
+#         tar_vals = []
+#         tar_dist = target_dist.query(f'label == "{tar}"')
+#         for attr in tar_dist['attribute_name'].unique():
+#             if not tick_names_flag:
+#                 tick_names.append(attr.upper())
+#                 tick_names += list(tar_dist.query(f'attribute_name == "{attr}"')['attribute_value'])
+#             tar_vals.append(0)
+#             tar_vals += list(tar_dist.query(f'attribute_name == "{attr}"')['label_pos'] / tar_dist.query(
+#                 f'attribute_name == "{attr}"')['group_n'] * 100)
+#         tick_names_flag = True
+#         ax.barh(np.arange(n_ticks)+i*width, tar_vals, width, left=0)
+#     if alias is not None:
+#         target_names = [alias.get(tar) for tar in targets]
+#     else:
+#         target_names = targets
+#     ax.legend(target_names, fontsize=12, loc='upper right')
+#     if baseline is not None:
+#         ax.vlines(baseline*100, 0, n_ticks-width, linestyles='dashed')
+#     ax.set_xlabel('% in upper half of class'.upper(), fontsize=13)
+#     ax.set_yticks(np.arange(n_ticks) + width / 2)
+#     ax.set_yticklabels(tick_names, fontsize=10)
+#     ax.set_ylim(0, n_ticks-width)
+#     ax.invert_yaxis()
+#     ax.grid(False, axis='y')
+#     ax.tick_params(labelsize=14, top='off', left='off')
+#
+#     png_path = os.path.join(out_dir, f'target_dist.png')
+#     plt.savefig(png_path, dpi=400, bbox_inches='tight')
+#     print(f'Plot of target distribution saved to {png_path}')
 
 
 def barh_pred_score(best_pred_score, out_dir):
@@ -264,13 +349,14 @@ def run(result_dir, vis_dir, vis_config):
         pred_score = hdf_result['pred_score']
         pred_bias = hdf_result['pred_bias']
 
-        best_pred_score = get_best_pred_score(model_info, pred_score, result_dir, hdf_result, metrics=config.get(
-            'metrics'))
-        # best_pred_score = hdf_result['best_pred_score']
-        pred_bias_mat = get_pred_bias_mat(pred_bias, best_pred_score, result_dir, hdf_result,
-                                          neglected_groups=config.get('neglected_groups'),
-                                          small_group_threshold=config.get('small_group_threshold'))
+        # best_pred_score = get_best_pred_score(model_info, pred_score, result_dir, hdf_result, metrics=config.get(
+        #     'metrics'))
+        best_pred_score = hdf_result['best_pred_score']
+        # pred_bias_mat = get_pred_bias_mat(pred_bias, best_pred_score, result_dir, hdf_result,
+        #                                   neglected_groups=config.get('neglected_groups'),
+        #                                   small_group_threshold=config.get('small_group_threshold'))
         # pred_bias_mat = hdf_result['pred_bias_mat']
 
         # barh_pred_score(best_pred_score, out_dir=vis_dir)
-        heatmap_pred_bias(pred_bias_mat, vis_dir, sig_level=config.get('sig_level'))
+        # heatmap_pred_bias(pred_bias_mat, vis_dir, sig_level=config.get('sig_level'))
+        bar_target_dist(pred_bias, model_info, vis_dir, neglected_groups=config.get('neglected_groups'))
