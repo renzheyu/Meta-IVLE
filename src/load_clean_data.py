@@ -360,6 +360,9 @@ def run(raw_data_dir, semantic_dir, data_config):
             elif os.path.isdir(f):
                 course_dir_list.append(f)
 
+    if not os.path.exists(semantic_dir):
+        os.makedirs(semantic_dir)
+
     with pd.HDFStore(os.path.join(semantic_dir, 'semantic.h5')) as hdf_semantic:
         create_course_table(course_dir_list, config['term_start_date'], semantic_dir, hdf=hdf_semantic)
         load_student_info(course_dir_list, semantic_dir, config['col_dict'], hdf=hdf_semantic) # Student-level tables
