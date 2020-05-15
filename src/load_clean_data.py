@@ -30,7 +30,8 @@ def create_course_table(course_list, term_start_date, out_dir, hdf, to_csv=True)
     None
     """
 
-    course_table_val = [parse_course_name(course.split('\\')[-1]) for course in course_list]
+    # course_table_val = [parse_course_name(course.split('\\')[-1]) for course in course_list]
+    course_table_val = [parse_course_name(os.path.basename(course)) for course in course_list]
     course_table = pd.DataFrame(course_table_val)
     course_table['course_id'] = np.arange(len(course_table)) + 1
     course_table['acadyr'] = course_table.apply(lambda x: get_acad_year(x['year'], x['acadterm']), axis=1)
@@ -82,7 +83,7 @@ def clean_student_table(course_name, course_id, student_table, col_dict):
             cleaned_student_table[col] = course_info_cols[col]
         elif col == 'acadyr':
             cleaned_student_table[col] = get_acad_year(course_info_cols['year'], course_info_cols['acadterm'])
-        elif col_dict[col] is not None and course_name in col_dict[col]:
+        elif (col_dict[col] is not None) and (course_name in col_dict[col]):
             cleaned_student_table[col] = student_table[col_dict[col][course_name]]
         elif col in student_table.columns:
             cleaned_student_table[col] = student_table[col]
@@ -165,7 +166,10 @@ def load_student_info(course_dir_list, out_dir, col_dict, hdf, to_csv=True):
                 student_info = pd.read_csv(os.path.join(course_dir, f))
                 break
         print('Finished loading')
-        course_name = course_dir.split('\\')[-1]
+
+        # course_name = course_dir.split('\\')[-1]
+        course_name = os.path.basename(course_dir)
+
         course_student_table = clean_student_table(course_name, i+1, student_info, col_dict)
         merged_student_info = merged_student_info.append(course_student_table)
         print('Cleaned data appended')
@@ -251,7 +255,8 @@ def load_clickstream(course_dir_list, out_dir, hdf, to_csv=True):
     for i, course_dir in enumerate(course_dir_list):
         print('Loading clickstream data: %s' % course_dir)
         click_dir = os.path.join(course_dir, 'clickstream')
-        course_name = course_dir.split('\\')[-1]
+        # course_name = course_dir.split('\\')[-1]
+        course_name = os.path.basename(course_dir)
         course_click_table = clean_merge_clicks(course_name, i+1, click_dir)
         clickstream_list.append(course_click_table)
         print('Clickstream appended')

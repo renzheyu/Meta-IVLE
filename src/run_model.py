@@ -155,7 +155,7 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
                     tune_models=False, to_csv=True):
     """
     Configure all requested prediction models (as combinations of different features, labels and models),
-    run the models using group(course)-level ross validation and save raw predictions
+    run the models using group(course)-level cross validation and save raw predictions
 
     Parameters
     ----------
