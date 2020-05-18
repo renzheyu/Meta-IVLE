@@ -115,7 +115,7 @@ def parse_course_name(raw_course_name):
     course_elem : dict
         Course elements including year, acadterm, dept and coursenum
     """
-    m = re.match(r"(\d+)([A-Za-z]+\d?)\s([A-Za-z ]+)\s(\d+[A-Za-z]?)", raw_course_name)
+    m = re.search(r"(\d+)([A-Za-z]+\d?)\s([A-Za-z ]+)\s(\d+[A-Za-z]?)", raw_course_name)
 
     # year (in four digits)
     year = m.group(1)
