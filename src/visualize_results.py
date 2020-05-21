@@ -139,9 +139,9 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
     pred_bias_mat = pd.pivot_table(pred_bias_mat_long, index='feature', values=['disparity', 'significance'],
                                    columns=['label', 'metric', 'attribute_name', 'attribute_value'])
 
-    if to_hdf:
-        hdf.put('pred_bias_mat', pred_bias_mat)
-        print('Matrix of prediction bias saved to HDFStore')
+#     if to_hdf:
+#         hdf.put('pred_bias_mat', pred_bias_mat)
+#         print('Matrix of prediction bias saved to HDFStore')
     if to_csv:
         csv_path = os.path.join(out_dir, 'pred_bias_mat.csv')
         pred_bias_mat.to_csv(csv_path, index=True)
@@ -265,7 +265,6 @@ def barh_pred_score(best_pred_score, out_dir):
     n_feature = best_pred_score['feature'].nunique()
     n_label = best_pred_score['label'].nunique()
     metrics = best_pred_score.columns[best_pred_score.columns.str.contains('_model_id')].str.replace('_model_id', '')
-
 
 def heatmap_pred_bias(pred_bias_mat, out_dir, sig_level=0.1):
     """

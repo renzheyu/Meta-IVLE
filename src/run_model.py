@@ -358,7 +358,7 @@ def compare_pred_score(pred_eval_score, out_dir, hdf, to_csv=True):
     # TODO: write this function when necessary
 
 
-def compute_bias(df, ref_groups, metrics):
+def compute_bias(df, ref_groups, metrics, alternative):
     """
     Compute the bias of a model
 
@@ -432,19 +432,19 @@ def compute_bias(df, ref_groups, metrics):
                     disparity = min(ref_acc/(value + 0.00001), 10)
                     count = [tp + tn, tp_ref + tn_ref]
                     nobs = [fp + fn + tn + tp, tp_ref + tn_ref + fp_ref + fn_ref]
-                    stat, pval = proportions_ztest(count, nobs, alternative='smaller')
+                    stat, pval = proportions_ztest(count, nobs, alternative=alternative)
                 elif metric == 'fnr':
                     value = fn/(fn + tp) if (fn + tp) != 0 else np.nan
                     disparity = min(value/(ref_fnr + 0.00001), 10)
                     count = [fn, fn_ref]
                     nobs = [fn + tp, fn_ref + tp_ref]
-                    stat, pval = proportions_ztest(count, nobs, alternative='larger')
+                    stat, pval = proportions_ztest(count, nobs, alternative=alternative)
                 elif metric == 'fpr':
                     value = fp/(fp + tn) if (fp + tn) != 0 else np.nan
                     disparity = min(value/(ref_fpr + 0.00001), 10)
                     count = [fp, fp_ref]
                     nobs = [fp + tn, fp_ref + tn_ref]
-                    stat, pval = proportions_ztest(count, nobs, alternative='larger')
+                    stat, pval = proportions_ztest(count, nobs, alternative=alternative)
 
                 metric_dict[metric] = value
                 metric_dict[metric + "_disparity"] = disparity
@@ -474,7 +474,7 @@ def compute_bias(df, ref_groups, metrics):
     return bdf
 
 
-def audit_fairness(pred_res, protected_attrs, ref_groups, metrics, out_dir, hdf, to_csv=True):
+def audit_fairness(pred_res, protected_attrs, ref_groups, metrics, alternative, out_dir, hdf, to_csv=True):
     """
     Evaluate the fairness of raw prediction results
 
@@ -512,7 +512,7 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, metrics, out_dir, hdf,
     id_cols = protected_attrs.index.to_frame().columns
     df = pred_res.merge(protected_attrs.reset_index()).drop(id_cols, axis=1)
 
-    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups, metrics=metrics).reset_index().drop(
+    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups, metrics=metrics, alternative=alternative).reset_index().drop(
         'level_1', axis=1)
 
     hdf.put('pred_bias', bias)
@@ -566,5 +566,5 @@ def run(feature_dir, model_dir, result_dir, model_config):
             # pred_res = hdf_result['pred_res']
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
-                           ref_groups=model_configs.get('ref_groups'), metrics=metrics,
+                           ref_groups=model_configs.get('ref_groups'), metrics=metrics, alternative='smaller'
                            out_dir=result_dir, hdf=hdf_result)
