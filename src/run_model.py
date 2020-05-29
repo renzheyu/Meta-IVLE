@@ -8,7 +8,9 @@ from src.utils import *
 
 from sklearn.pipeline import Pipeline, make_union
 from sklearn.preprocessing import robust_scale
-from sklearn.impute import SimpleImputer, MissingIndicator
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import SimpleImputer, MissingIndicator, KNNImputer, IterativeImputer
+
 from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict, GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
@@ -151,7 +153,7 @@ def get_labels(master_table, label_name, label_group='labels', to_numpy=False):
     return label_table
 
 
-def run_pred_models(master_table, features, labels, models, group_var, rseed, model_dir, result_dir, result_hdf,
+def run_pred_models(master_table, features, labels, models, group_var, rseed, imputer, model_dir, result_dir, result_hdf,
                     tune_models=False, to_csv=True):
     """
     Configure all requested prediction models (as combinations of different features, labels and models),
@@ -178,6 +180,9 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
 
     rseed : int
             Pseudo-random number
+
+    imputer : str
+        Name of imputer to use; either "simple", "KNN" or "iterative"
 
     model_dir : str
         Directory to save model hyperparameters
@@ -208,9 +213,14 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
     pred_res = pd.DataFrame([], columns=unique_id.columns.tolist()+['model_id', 'y_true', 'y_pred'])
     best_params_file_path = os.path.join(model_dir, 'best_hyperparams.pickle')
     clf_dict = {
-        'logistic_regression': LogisticRegression(random_state=rseed),
+        'logistic_regression': LogisticRegression(random_state=rseed, solver='liblinear'),
         'svm': SVC(probability=True, random_state=rseed),
         'random_forest': RandomForestClassifier(random_state=rseed)
+    }
+    imputer_dict = {
+        'simple': SimpleImputer(strategy='constant', fill_value=0),
+        'KNN' : KNNImputer(),
+        'iterative': IterativeImputer()
     }
 
     if not tune_models:
@@ -229,7 +239,7 @@ def run_pred_models(master_table, features, labels, models, group_var, rseed, mo
             clf = clf_dict[model]
             logo = LeaveOneGroupOut()
             estimator = Pipeline(
-                [('impute', SimpleImputer(strategy='constant', fill_value=0)),
+                [('impute', imputer_dict[imputer]),
                  ('clf', clf)]
             )
             if not tune_models:
@@ -358,7 +368,8 @@ def compare_pred_score(pred_eval_score, out_dir, hdf, to_csv=True):
     # TODO: write this function when necessary
 
 
-def compute_bias(df, ref_groups, metrics, alternative):
+def compute_bias(df, ref_groups, metrics, mode):
+
     """
     Compute the bias of a model
 
@@ -374,6 +385,9 @@ def compute_bias(df, ref_groups, metrics, alternative):
 
     ref_groups : dict
         Identifies the reference group for each protected attribute
+
+    mode : str
+        Either "one-sided" or "two-sided"
 
     Results
     -------
@@ -432,18 +446,21 @@ def compute_bias(df, ref_groups, metrics, alternative):
                     disparity = min(ref_acc/(value + 0.00001), 10)
                     count = [tp + tn, tp_ref + tn_ref]
                     nobs = [fp + fn + tn + tp, tp_ref + tn_ref + fp_ref + fn_ref]
+                    alternative = mode if mode == "two-sided" else "smaller"
                     stat, pval = proportions_ztest(count, nobs, alternative=alternative)
                 elif metric == 'fnr':
                     value = fn/(fn + tp) if (fn + tp) != 0 else np.nan
                     disparity = min(value/(ref_fnr + 0.00001), 10)
                     count = [fn, fn_ref]
                     nobs = [fn + tp, fn_ref + tp_ref]
+                    alternative = mode if mode == "two-sided" else "larger"
                     stat, pval = proportions_ztest(count, nobs, alternative=alternative)
                 elif metric == 'fpr':
                     value = fp/(fp + tn) if (fp + tn) != 0 else np.nan
                     disparity = min(value/(ref_fpr + 0.00001), 10)
                     count = [fp, fp_ref]
                     nobs = [fp + tn, fp_ref + tn_ref]
+                    alternative = mode if mode == "two-sided" else "larger"
                     stat, pval = proportions_ztest(count, nobs, alternative=alternative)
 
                 metric_dict[metric] = value
@@ -559,12 +576,12 @@ def run(feature_dir, model_dir, result_dir, model_config):
                                                max_var_miss=model_configs.get('max_var_miss'),
                                                label_table_names=['labels'], standardize=True, by=['course_id'])
             model_info, pred_res = run_pred_models(master_table, features, labels, models, group_var='course_id',
-                                                   rseed=model_configs.get('random_seed'), model_dir=model_dir,
+                                                   rseed=model_configs.get('random_seed'), imputer='KNN', model_dir=model_dir,
                                                    result_dir=result_dir, result_hdf=hdf_result,
                                                    tune_models=model_configs.get('tune_models'))
             # master_table = hdf_result['master_table']
             # pred_res = hdf_result['pred_res']
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
-                           ref_groups=model_configs.get('ref_groups'), metrics=metrics, alternative='smaller'
+                           ref_groups=model_configs.get('ref_groups'), metrics=metrics, mode="one-sided",
                            out_dir=result_dir, hdf=hdf_result)
