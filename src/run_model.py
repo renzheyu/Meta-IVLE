@@ -579,13 +579,12 @@ def run(feature_dir, model_dir, result_dir, model_config):
             #                                    max_var_miss=model_configs.get('max_var_miss'),
             #                                    label_table_names=['labels'], standardize=True, by=['course_id'])
             master_table = hdf_result['master_table']
-            model_info, pred_res = run_pred_models(master_table, features, labels, models, group_var='course_id',
-                                                   rseed=model_configs.get('random_seed'), model_dir=model_dir,
-                                                   result_dir=result_dir, result_hdf=hdf_result,
-                                                   tune_models=model_configs.get('tune_models'))
-            # pred_res = hdf_result['pred_res']
-            eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
+            # model_info, pred_res = run_pred_models(master_table, features, labels, models, group_var='course_id',
+            #                                        rseed=model_configs.get('random_seed'), model_dir=model_dir,
+            #                                        result_dir=result_dir, result_hdf=hdf_result,
+            #                                        tune_models=model_configs.get('tune_models'))
+            pred_res = hdf_result['pred_res']
+            # eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
                            ref_groups=model_configs.get('ref_groups'), metrics=metrics,
-                           bias_test_one_sided=model_config.get('bias_test_one_sided'), out_dir=result_dir,
-                           hdf=hdf_result)
+                           one_sided=model_configs.get('bias_test_one_sided'), out_dir=result_dir, hdf=hdf_result)
