@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.collections import LineCollection
+from statsmodels.stats.multitest import multipletests
 from src.utils import *
 
 mpl.style.use('ggplot')
@@ -67,7 +68,7 @@ def get_best_pred_score(model_info, pred_score, out_dir, hdf, metrics=None, to_h
 
 
 def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups=None, small_group_threshold=0.01,
-                      to_hdf=True, to_csv=True):
+                      multitest=True, to_hdf=True, to_csv=True):
     """
     Generate a matrix representation of prediction bias against subpopulations, across different features and labels
 
@@ -94,6 +95,9 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
 
     hdf : HDFStore object
         Where the resulting table is stored (comparable to a schema in databases)
+
+    multitest : boolean
+        Whether to adjust p-values due to multiple testing; use Benjamini-Hochberg method if true
 
     to_hdf : boolean
         Whether to save the resulting table in the specified HDFStore object
@@ -126,11 +130,14 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
     metrics = best_pred_score.columns.drop(['feature', 'label', 'model_id'])
     bias_metrics = metrics.intersection(pred_bias_valid.columns)
     for bias_metric in bias_metrics:
-        model_sub = best_pred_score[['feature', 'label']]
-        model_sub['model_id'] = best_pred_score['model_id']
+        model_sub = best_pred_score[['feature', 'label', 'model_id']]
         pred_bias_sub = pred_bias_valid[['model_id', 'attribute_name', 'attribute_value']]
-        pred_bias_sub['disparity'] = pred_bias_valid[bias_metric + '_disparity']
-        pred_bias_sub['significance'] = pred_bias_valid[bias_metric + '_significance']
+        pred_bias_sub['disparity'] = pred_bias_valid[bias_metric+'_disparity']
+        if multitest:
+            pred_bias_sub['significance'] = pred_bias_valid.groupby(['model_id', 'attribute_name'])[
+                bias_metric+'_significance'].transform(lambda x: multipletests(x, method='fdr_bh')[1])
+        else:
+            pred_bias_sub['significance'] = pred_bias_valid[bias_metric+'_significance']
         pred_bias_sub['metric'] = bias_metric
         pred_bias_sub = model_sub.merge(pred_bias_sub, how='left')
         pred_bias_mat_long = pred_bias_mat_long.append(pred_bias_sub)
@@ -139,9 +146,9 @@ def get_pred_bias_mat(pred_bias, best_pred_score, out_dir, hdf, neglected_groups
     pred_bias_mat = pd.pivot_table(pred_bias_mat_long, index='feature', values=['disparity', 'significance'],
                                    columns=['label', 'metric', 'attribute_name', 'attribute_value'])
 
-#     if to_hdf:
-#         hdf.put('pred_bias_mat', pred_bias_mat)
-#         print('Matrix of prediction bias saved to HDFStore')
+    if to_hdf:
+        hdf.put('pred_bias_mat', pred_bias_mat)
+        print('Matrix of prediction bias saved to HDFStore')
     if to_csv:
         csv_path = os.path.join(out_dir, 'pred_bias_mat.csv')
         pred_bias_mat.to_csv(csv_path, index=True)
@@ -196,53 +203,6 @@ def bar_target_dist(pred_bias, model_info, out_dir, neglected_groups=None):
         print(f'Plot of target distribution saved to {png_path}')
 
 
-# def bar_target_dist(pred_bias, model_info, out_dir, neglected_groups=None, baseline=None, alias=None):
-#     # TODO: docstring
-#     target_dist = model_info.drop_duplicates('label')[['label', 'model_id']]
-#     target_dist = target_dist.merge(pred_bias, on='model_id', how='left')
-#     if neglected_groups is not None:
-#         f_neglected_group = target_dist.apply(is_neglected_group, axis=1, args=(neglected_groups,))
-#         target_dist = target_dist[~f_neglected_group]
-#
-#     targets = target_dist['label'].unique()
-#     n_ticks = target_dist['attribute_value'].nunique() + target_dist['attribute_name'].nunique()
-#     fix, ax = plt.subplots(figsize=(5, n_ticks*0.5))
-#     width = 0.75 / len(targets)
-#
-#     tick_names = []
-#     tick_names_flag = False
-#     for (i, tar) in enumerate(targets):
-#         tar_vals = []
-#         tar_dist = target_dist.query(f'label == "{tar}"')
-#         for attr in tar_dist['attribute_name'].unique():
-#             if not tick_names_flag:
-#                 tick_names.append(attr.upper())
-#                 tick_names += list(tar_dist.query(f'attribute_name == "{attr}"')['attribute_value'])
-#             tar_vals.append(0)
-#             tar_vals += list(tar_dist.query(f'attribute_name == "{attr}"')['label_pos'] / tar_dist.query(
-#                 f'attribute_name == "{attr}"')['group_n'] * 100)
-#         tick_names_flag = True
-#         ax.barh(np.arange(n_ticks)+i*width, tar_vals, width, left=0)
-#     if alias is not None:
-#         target_names = [alias.get(tar) for tar in targets]
-#     else:
-#         target_names = targets
-#     ax.legend(target_names, fontsize=12, loc='upper right')
-#     if baseline is not None:
-#         ax.vlines(baseline*100, 0, n_ticks-width, linestyles='dashed')
-#     ax.set_xlabel('% in upper half of class'.upper(), fontsize=13)
-#     ax.set_yticks(np.arange(n_ticks) + width / 2)
-#     ax.set_yticklabels(tick_names, fontsize=10)
-#     ax.set_ylim(0, n_ticks-width)
-#     ax.invert_yaxis()
-#     ax.grid(False, axis='y')
-#     ax.tick_params(labelsize=14, top='off', left='off')
-#
-#     png_path = os.path.join(out_dir, f'target_dist.png')
-#     plt.savefig(png_path, dpi=400, bbox_inches='tight')
-#     print(f'Plot of target distribution saved to {png_path}')
-
-
 def barh_pred_score(best_pred_score, out_dir):
     """
     Make a horizontal bar plot of prediction results for each metric, where features spread on y-axis and
@@ -265,6 +225,7 @@ def barh_pred_score(best_pred_score, out_dir):
     n_feature = best_pred_score['feature'].nunique()
     n_label = best_pred_score['label'].nunique()
     metrics = best_pred_score.columns[best_pred_score.columns.str.contains('_model_id')].str.replace('_model_id', '')
+
 
 def heatmap_pred_bias(pred_bias_mat, out_dir, sig_level=0.1):
     """
@@ -348,14 +309,15 @@ def run(result_dir, vis_dir, vis_config):
         pred_score = hdf_result['pred_score']
         pred_bias = hdf_result['pred_bias']
 
-        # best_pred_score = get_best_pred_score(model_info, pred_score, result_dir, hdf_result, metrics=config.get(
-        #     'metrics'))
-        best_pred_score = hdf_result['best_pred_score']
-        # pred_bias_mat = get_pred_bias_mat(pred_bias, best_pred_score, result_dir, hdf_result,
-        #                                   neglected_groups=config.get('neglected_groups'),
-        #                                   small_group_threshold=config.get('small_group_threshold'))
+        best_pred_score = get_best_pred_score(model_info, pred_score, result_dir, hdf_result, metrics=config.get(
+            'metrics'))
+        # best_pred_score = hdf_result['best_pred_score']
+        pred_bias_mat = get_pred_bias_mat(pred_bias, best_pred_score, result_dir, hdf_result,
+                                          neglected_groups=config.get('neglected_groups'),
+                                          multitest=config.get('multitest'),
+                                          small_group_threshold=config.get('small_group_threshold'))
         # pred_bias_mat = hdf_result['pred_bias_mat']
 
         # barh_pred_score(best_pred_score, out_dir=vis_dir)
-        # heatmap_pred_bias(pred_bias_mat, vis_dir, sig_level=config.get('sig_level'))
+        heatmap_pred_bias(pred_bias_mat, vis_dir, sig_level=config.get('sig_level'))
         bar_target_dist(pred_bias, model_info, vis_dir, neglected_groups=config.get('neglected_groups'))
