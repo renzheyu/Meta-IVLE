@@ -6,10 +6,10 @@ from functools import reduce
 from itertools import product
 from src.utils import *
 
-from sklearn.pipeline import Pipeline, make_union
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import robust_scale
 from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import SimpleImputer, MissingIndicator, KNNImputer, IterativeImputer
+from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
 
 from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict, GridSearchCV
 from sklearn.linear_model import LogisticRegression
@@ -153,8 +153,8 @@ def get_labels(master_table, label_name, label_group='labels', to_numpy=False):
     return label_table
 
 
-def run_pred_models(master_table, features, labels, models, group_var, rseed, imputer, model_dir, result_dir, result_hdf,
-                    tune_models=False, to_csv=True):
+def run_pred_models(master_table, features, labels, models, group_var, rseed, model_dir, result_dir, result_hdf,
+                    imputer='iterative', tune_models=False, to_csv=True):
     """
     Configure all requested prediction models (as combinations of different features, labels and models),
     run the models using group(course)-level cross validation and save raw predictions
@@ -368,7 +368,7 @@ def compare_pred_score(pred_eval_score, out_dir, hdf, to_csv=True):
     # TODO: write this function when necessary
 
 
-def compute_bias(df, ref_groups, metrics, mode):
+def compute_bias(df, ref_groups, metrics, one_sided=False):
 
     """
     Compute the bias of a model
@@ -386,8 +386,8 @@ def compute_bias(df, ref_groups, metrics, mode):
     ref_groups : dict
         Identifies the reference group for each protected attribute
 
-    mode : str
-        Either "one-sided" or "two-sided"
+    one_sided : boolean
+        Whether to perform one-sided (or two-sided) tests when calculating biases between groups
 
     Results
     -------
@@ -446,21 +446,21 @@ def compute_bias(df, ref_groups, metrics, mode):
                     disparity = min(ref_acc/(value + 0.00001), 10)
                     count = [tp + tn, tp_ref + tn_ref]
                     nobs = [fp + fn + tn + tp, tp_ref + tn_ref + fp_ref + fn_ref]
-                    alternative = mode if mode == "two-sided" else "smaller"
+                    alternative = 'smaller' if one_sided else 'two-sided'
                     stat, pval = proportions_ztest(count, nobs, alternative=alternative)
                 elif metric == 'fnr':
                     value = fn/(fn + tp) if (fn + tp) != 0 else np.nan
                     disparity = min(value/(ref_fnr + 0.00001), 10)
                     count = [fn, fn_ref]
                     nobs = [fn + tp, fn_ref + tp_ref]
-                    alternative = mode if mode == "two-sided" else "larger"
+                    alternative = 'larger' if one_sided else 'two-sided'
                     stat, pval = proportions_ztest(count, nobs, alternative=alternative)
                 elif metric == 'fpr':
                     value = fp/(fp + tn) if (fp + tn) != 0 else np.nan
                     disparity = min(value/(ref_fpr + 0.00001), 10)
                     count = [fp, fp_ref]
                     nobs = [fp + tn, fp_ref + tn_ref]
-                    alternative = mode if mode == "two-sided" else "larger"
+                    alternative = 'larger' if one_sided else 'two-sided'
                     stat, pval = proportions_ztest(count, nobs, alternative=alternative)
 
                 metric_dict[metric] = value
@@ -491,7 +491,7 @@ def compute_bias(df, ref_groups, metrics, mode):
     return bdf
 
 
-def audit_fairness(pred_res, protected_attrs, ref_groups, metrics, alternative, out_dir, hdf, to_csv=True):
+def audit_fairness(pred_res, protected_attrs, ref_groups, metrics, one_sided, out_dir, hdf, to_csv=True):
     """
     Evaluate the fairness of raw prediction results
 
@@ -509,6 +509,9 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, metrics, alternative, 
 
     ref_groups : dict
         Identifies the reference group for each protected attribute
+
+    one_sided : boolean
+        Whether to perform one-sided (or two-sided) tests when calculating biases between groups
 
     out_dir : str
         Directory to save the resulting table
@@ -529,8 +532,8 @@ def audit_fairness(pred_res, protected_attrs, ref_groups, metrics, alternative, 
     id_cols = protected_attrs.index.to_frame().columns
     df = pred_res.merge(protected_attrs.reset_index()).drop(id_cols, axis=1)
 
-    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups, metrics=metrics, alternative=alternative).reset_index().drop(
-        'level_1', axis=1)
+    bias = df.groupby('model_id').apply(compute_bias, ref_groups=ref_groups, metrics=metrics,
+                                        one_sided=one_sided).reset_index().drop('level_1', axis=1)
 
     hdf.put('pred_bias', bias)
     print('Prediction bias analysis saved to HDFStore')
@@ -572,16 +575,17 @@ def run(feature_dir, model_dir, result_dir, model_config):
 
     with pd.HDFStore(os.path.join(feature_dir, 'feature.h5')) as hdf_feature:
         with pd.HDFStore(os.path.join(result_dir, 'result.h5')) as hdf_result:
-            master_table = create_master_table(hdf_in=hdf_feature, hdf_out=hdf_result, out_dir=result_dir,
-                                               max_var_miss=model_configs.get('max_var_miss'),
-                                               label_table_names=['labels'], standardize=True, by=['course_id'])
+            # master_table = create_master_table(hdf_in=hdf_feature, hdf_out=hdf_result, out_dir=result_dir,
+            #                                    max_var_miss=model_configs.get('max_var_miss'),
+            #                                    label_table_names=['labels'], standardize=True, by=['course_id'])
+            master_table = hdf_result['master_table']
             model_info, pred_res = run_pred_models(master_table, features, labels, models, group_var='course_id',
-                                                   rseed=model_configs.get('random_seed'), imputer='KNN', model_dir=model_dir,
+                                                   rseed=model_configs.get('random_seed'), model_dir=model_dir,
                                                    result_dir=result_dir, result_hdf=hdf_result,
                                                    tune_models=model_configs.get('tune_models'))
-            # master_table = hdf_result['master_table']
             # pred_res = hdf_result['pred_res']
             eval_pred_res(pred_res, metrics, out_dir=result_dir, hdf=hdf_result)
             audit_fairness(pred_res, protected_attrs=master_table['protected_attributes'],
-                           ref_groups=model_configs.get('ref_groups'), metrics=metrics, mode="one-sided",
-                           out_dir=result_dir, hdf=hdf_result)
+                           ref_groups=model_configs.get('ref_groups'), metrics=metrics,
+                           bias_test_one_sided=model_config.get('bias_test_one_sided'), out_dir=result_dir,
+                           hdf=hdf_result)
