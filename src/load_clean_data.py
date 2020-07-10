@@ -30,7 +30,6 @@ def create_course_table(course_list, term_start_date, out_dir, hdf, to_csv=True)
     None
     """
 
-    # course_table_val = [parse_course_name(course.split('\\')[-1]) for course in course_list]
     course_table_val = [parse_course_name(os.path.basename(course)) for course in course_list]
     course_table = pd.DataFrame(course_table_val)
     course_table['course_id'] = np.arange(len(course_table)) + 1
@@ -167,7 +166,6 @@ def load_student_info(course_dir_list, out_dir, col_dict, hdf, to_csv=True):
                 break
         print('Finished loading')
 
-        # course_name = course_dir.split('\\')[-1]
         course_name = os.path.basename(course_dir)
 
         course_student_table = clean_student_table(course_name, i+1, student_info, col_dict)
@@ -255,7 +253,7 @@ def load_clickstream(course_dir_list, out_dir, hdf, to_csv=True):
     for i, course_dir in enumerate(course_dir_list):
         print('Loading clickstream data: %s' % course_dir)
         click_dir = os.path.join(course_dir, 'clickstream')
-        # course_name = course_dir.split('\\')[-1]
+
         course_name = os.path.basename(course_dir)
         course_click_table = clean_merge_clicks(course_name, i+1, click_dir)
         clickstream_list.append(course_click_table)
@@ -324,6 +322,88 @@ def load_enrollment(enrollment_file, out_dir, hdf, to_csv=True):
         csv_path = os.path.join(out_dir, 'course_enrolled.csv')
         enrollment.to_csv(csv_path, index=False)
         print(f'Cleaned data saved to {csv_path}')
+
+
+
+def clean_merge_requests(course_name, course_id, requests_dir):
+    """
+    Clean and merge request data for one course
+
+    Parameters
+    ----------
+    course_name : str
+        Name of the course, in the form of '16S1 PHY 3A'
+
+    course_id : int
+        Unique course identifier
+
+    requests_dir: str
+        Directory where raw requests data are saved
+
+    Returns
+    -------
+    merged_clicks : Pandas DataFrame
+        Cleaned merged requests data
+    """
+    requests_list = []
+    course_info_cols = parse_course_name(course_name)
+
+    for name in os.listdir(requests_dir):
+        if name.endswith('csv'):
+            request_file = pd.read_csv(os.path.join(requests_dir, name), dtype={"discussion_id":str})
+            request_file = request_file.dropna(subset=['discussion_id'])
+            requests_list.append(request_file)
+    merged_requests = pd.concat(requests_list).reset_index(drop=True)
+
+    for col in course_info_cols:
+        merged_requests[col] = course_info_cols[col]
+    merged_requests['course_id'] = course_id
+    return merged_requests
+
+
+def load_requests(course_dir_list, out_dir, to_csv=True):#hdf, to_csv=True):
+
+    """
+    Read and clean raw Canvas requests data for each course and merge across multiple courses
+
+    Parameters
+    ----------
+    course_dir_list : str
+        List of course folders (with full path), each of which contains one or more requests csv files
+
+    out_dir : str
+        Directory to save the cleaned, merged table
+
+    hdf : HDFStore object
+        Where the resulting table is stored (comparable to a schema in databases)
+
+    to_csv : boolean
+        Whether to store the table in a .csv file (in addition to hdf_in) for easier examnination
+
+    Returns
+    -------
+    None
+    """
+
+    requests_list = []
+    for i, course_dir in enumerate(course_dir_list):
+        print('Loading request data: %s' % course_dir)
+        course_name = os.path.basename(course_dir)
+        course_requests_table = clean_merge_requests(course_name, i+1, course_dir)
+        requests_list.append(course_requests_table)
+        print('Request appended')
+
+    requests = pd.concat(requests_list).reset_index(drop=True)
+    requests.rename({'Unnamed: 0': 'roster_randomid'}, axis=1, inplace=True)
+    # requests['timestamp'] = pd.to_datetime(requests['timestamp'], utc=True).dt.tz_convert('US/Pacific')
+    requests.reset_index(inplace=True, drop=True)
+
+    #hdf.put('requests', requests)
+    if to_csv:
+        csv_path = os.path.join(out_dir, 'merged_requests.csv')
+        requests.to_csv(csv_path, index=False)
+        print(f'Cleaned data saved to {csv_path}')
+
 
 
 def run(raw_data_dir, semantic_dir, data_config):
