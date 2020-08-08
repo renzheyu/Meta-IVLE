@@ -73,7 +73,7 @@ def create_click_features(clickstream, course, feature_list, id_cols, out_dir, h
     Parameters
     ----------
     clickstream : Pandas DataFrame
-        Student-by-course-level institutional information (including prior academic history)
+        Merged clickstream data with course names
 
     course: Pandas DataFrame
         Course-level information such as duration
