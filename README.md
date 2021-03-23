@@ -1,4 +1,3 @@
-# Meta-IVLE
 This repository presents a complete data pipeline for college success prediction. [[Paper](https://educationaldatamining.org/files/conferences/EDM2020/papers/paper_194.pdf)][[Video](https://www.youtube.com/watch?v=CZgACA4BJiQ&t=9s)]
 
 ## Data
